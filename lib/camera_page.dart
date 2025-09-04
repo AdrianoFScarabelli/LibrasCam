@@ -12,9 +12,9 @@ import 'package:flutter/services.dart' show rootBundle;
 // Certifique-se de que a variável global _cameras é inicializada em main.dart
 // late List<CameraDescription> _cameras;
 // Future<void> main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   _cameras = await availableCameras();
-//   runApp(const MyApp());
+//  WidgetsFlutterBinding.ensureInitialized();
+//  _cameras = await availableCameras();
+//  runApp(const MyApp());
 // }
 
 class CameraScreen extends StatefulWidget {
@@ -36,7 +36,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // Variável para armazenar o último sinal reconhecido.
   int? _lastRecognizedIndex;
-  
+  // Nova lista para armazenar os últimos 'N' frames para lógica de contexto.
+  final List<int> _predictionHistory = [];
+
   // --- NOVO MAPeamento de rótulos ---
   // Este mapeamento deve ser idêntico ao do `captLandmarks.py` e `treinoLandmarks.py`
   final Map<int, String> classMapping = {
@@ -47,21 +49,31 @@ class _CameraScreenState extends State<CameraScreen> {
     9: "Número 9",
     10: "Outros Sinais",
     11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
-    15: "Letra E", 16: "Letra F", 17: "Letra G", 18: "Letra I", 19: "Letra L",
-    20: "Letra M", 21: "Letra N", 22: "Letra P", 23: "Letra Q",
-    24: "Letra R", 25: "Letra T", 26: "Letra U", 27: "Letra V",
-    28: "Letra W", 29: "Letra Y",
+    15: "Letra E", 16: "Letra F", 17: "Letra G",
+    18: "Letra K", // NOVO
+    19: "Letra I", // Reindexado
+    20: "Letra L", // Reindexado
+    21: "Letra M", // Reindexado
+    22: "Letra N", // Reindexado
+    23: "Letra P", // Reindexado
+    24: "Letra Q", // Reindexado
+    25: "Letra R", // Reindexado
+    26: "Letra T", // Reindexado
+    27: "Letra U", // Reindexado
+    28: "Letra V", // Reindexado
+    29: "Letra W", // Reindexado
+    30: "Letra Y", // Reindexado
   };
 
   // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, // K foi adicionado
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
       // --- NOVO NOME DO MODELO TFLITE ---
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_ambiguos.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_K.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         print('Erro: Modelo carregado como dados vazios.');
@@ -69,7 +81,7 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       interpreter = Interpreter.fromBuffer(modelBytes);
-      print('✅ Modelo TFLite (libras_landmarks_ambiguos.tflite) carregado com sucesso.');
+      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_K.tflite) carregado com sucesso.');
     } catch (e) {
       print('❌ Falha ao carregar o modelo TFLite: $e');
       setState(() { resultado = "Erro ao carregar o modelo de reconhecimento."; });
@@ -108,7 +120,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _startSendingPictures() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+    _timer = Timer.periodic(const Duration(milliseconds: 300), (timer) async { // Aumentando a frequência de captura para 300ms
       if (!_controller.value.isInitialized || _isSendingPicture) {
         return;
       }
@@ -119,7 +131,6 @@ class _CameraScreenState extends State<CameraScreen> {
         final File file = File(imageFile.path);
         final Uint8List imageBytes = await file.readAsBytes();
 
-        // Substitua o IP pelo do seu servidor local ou serviço de nuvem
         final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
         var request = http.MultipartRequest('POST', uri);
         request.files.add(http.MultipartFile.fromBytes(
@@ -144,6 +155,7 @@ class _CameraScreenState extends State<CameraScreen> {
               setState(() {
                 resultado = jsonResponse['mensagem'] ?? "Nenhuma mão detectada.";
                 _lastRecognizedIndex = null;
+                _predictionHistory.clear(); // Limpa o histórico se a mão for perdida
               });
             }
           }
@@ -178,8 +190,8 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     var input = landmarks.reshape([1, 63]);
-    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (30 classes)
-    var output = List<List<double>>.filled(1, List<double>.filled(30, 0.0));
+    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (31 classes)
+    var output = List<List<double>>.filled(1, List<double>.filled(31, 0.0));
 
     try {
       interpreter!.run(input, output);
@@ -190,42 +202,66 @@ class _CameraScreenState extends State<CameraScreen> {
       var confidence = probabilities[predictedIndex];
 
       if (confidence > 0.55) {
+        // Adiciona a previsão ao histórico
+        _predictionHistory.add(predictedIndex);
+        if (_predictionHistory.length > 5) { // Mantém os últimos 5 frames no histórico
+          _predictionHistory.removeAt(0);
+        }
+
+        // --- LÓGICA DE CONTEXTO E DINÂMICA (NOVA) ---
         String finalResult;
         int finalIndex;
 
-        // --- LÓGICA DE CONTEXTO REVISADA ---
-        // Checa se o modelo previu o sinal ambíguo 0/O
-        if (predictedIndex == 0) {
-          // Se o último sinal foi uma letra, o atual deve ser a Letra O.
+        // Verifica o sinal dinâmico 'H' (K seguido de 2)
+        // K é o índice 18 e 2 é o índice 2.
+        final int kIndex = 18;
+        final int twoIndex = 2;
+
+        // Verifica se a sequência K-2 apareceu nos últimos frames
+        bool isDynamicH = false;
+        if (_predictionHistory.length >= 2) {
+          // Checa se o último frame foi 2 e o penúltimo foi K
+          if (_predictionHistory[_predictionHistory.length - 1] == twoIndex &&
+              _predictionHistory[_predictionHistory.length - 2] == kIndex) {
+            isDynamicH = true;
+          }
+          // Pode adicionar outras variações, como K-K-2
+          // if (_predictionHistory.length >= 3 &&
+          //     _predictionHistory[_predictionHistory.length - 1] == twoIndex &&
+          //     _predictionHistory[_predictionHistory.length - 2] == kIndex &&
+          //     _predictionHistory[_predictionHistory.length - 3] == kIndex) {
+          //   isDynamicH = true;
+          // }
+        }
+
+        if (isDynamicH) {
+          finalResult = "Letra H";
+          finalIndex = -1; // Use um índice único para sinais dinâmicos, ex: -1 para 'H'
+          _predictionHistory.clear(); // Limpa o histórico após a detecção
+        } else if (predictedIndex == 0) {
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex)) {
             finalResult = "Letra O (Inferido por contexto)";
-            // Crie um índice para "Letra O" para manter o histórico de contexto
-            finalIndex = 30; // Exemplo: um novo índice para 'O'
+            finalIndex = 0; // O é 0, reajustando para um valor que já existe.
           } else {
-            // Caso contrário, é o Número 0.
             finalResult = "Número 0 (Inferido por contexto)";
-            // Crie um índice para "Número 0" para manter o histórico
-            finalIndex = 31; // Exemplo: um novo índice para '0'
+            finalIndex = 0;
           }
-        }
-        // Checa se o modelo previu o sinal ambíguo 8/S
-        else if (predictedIndex == 8) {
-          // Se o último sinal foi uma letra, o atual deve ser a Letra S.
+        } else if (predictedIndex == 8) {
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex)) {
             finalResult = "Letra S (Inferido por contexto)";
-            finalIndex = 32; // Exemplo: um novo índice para 'S'
+            finalIndex = 8;
           } else {
-            // Caso contrário, é o Número 8.
             finalResult = "Número 8 (Inferido por contexto)";
-            finalIndex = 33; // Exemplo: um novo índice para '8'
+            finalIndex = 8;
           }
         } else {
-          // Se não for um sinal ambíguo, use a previsão do modelo normalmente.
+          // Se não for um sinal dinâmico nem ambíguo, use a previsão normal.
           finalResult = "${classMapping[predictedIndex]} (Conf: ${(confidence * 100).toStringAsFixed(2)}%)";
           finalIndex = predictedIndex;
         }
 
-        // --- FIM DA LÓGICA DE CONTEXTO ---
+        // --- FIM DA LÓGICA DE CONTEXTO E DINÂMICA ---
+
         if (mounted) {
           setState(() {
             resultado = finalResult;
@@ -237,6 +273,7 @@ class _CameraScreenState extends State<CameraScreen> {
           setState(() {
             resultado = "Sinal não reconhecido (TFLite - Baixa Confiança)";
             _lastRecognizedIndex = null;
+            _predictionHistory.clear(); // Limpa o histórico se a confiança for baixa
           });
         }
       }
