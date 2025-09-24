@@ -62,18 +62,19 @@ class _CameraScreenState extends State<CameraScreen> {
     27: "Letra U", // Reindexado
     28: "Letra V", // Reindexado
     29: "Letra W", // Reindexado
-    30: "Letra Y", // Reindexado
+    30: "Letra X", // Reindexado
+    31: "Letra Y", // Reindexado
   };
 
   // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, // K foi adicionado
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, // K foi adicionado
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
       // --- NOVO NOME DO MODELO TFLITE ---
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_K.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         print('Erro: Modelo carregado como dados vazios.');
@@ -81,7 +82,7 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       interpreter = Interpreter.fromBuffer(modelBytes);
-      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_K.tflite) carregado com sucesso.');
+      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_X.tflite) carregado com sucesso.');
     } catch (e) {
       print('❌ Falha ao carregar o modelo TFLite: $e');
       setState(() { resultado = "Erro ao carregar o modelo de reconhecimento."; });
@@ -191,7 +192,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     var input = landmarks.reshape([1, 63]);
     // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (31 classes)
-    var output = List<List<double>>.filled(1, List<double>.filled(31, 0.0));
+    var output = List<List<double>>.filled(1, List<double>.filled(32, 0.0));
 
     try {
       interpreter!.run(input, output);
