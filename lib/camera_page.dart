@@ -43,38 +43,49 @@ class _CameraScreenState extends State<CameraScreen> {
   // Este mapeamento deve ser idêntico ao do `captLandmarks.py` e `treinoLandmarks.py`
   final Map<int, String> classMapping = {
     0: "Sinal Ambíguo 0/O",
-    1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
-    5: "Número 5", 6: "Número 6", 7: "Número 7",
+    1: "Número 1", 
+    2: "Número 2", 
+    3: "Número 3", 
+    4: "Número 4",
+    5: "Número 5", 
+    6: "Número 6", 
+    7: "Número 7",
     8: "Sinal Ambíguo 8/S",
     9: "Número 9",
     10: "Outros Sinais",
-    11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
-    15: "Letra E", 16: "Letra F", 17: "Letra G",
-    18: "Letra K", // NOVO
-    19: "Letra I", // Reindexado
-    20: "Letra L", // Reindexado
-    21: "Letra M", // Reindexado
-    22: "Letra N", // Reindexado
-    23: "Letra P", // Reindexado
-    24: "Letra Q", // Reindexado
-    25: "Letra R", // Reindexado
-    26: "Letra T", // Reindexado
-    27: "Letra U", // Reindexado
-    28: "Letra V", // Reindexado
-    29: "Letra W", // Reindexado
-    30: "Letra X", // Reindexado
-    31: "Letra Y", // Reindexado
+    11: "Letra A",
+    12: "Letra B",
+    13: "Letra C",
+    14: "Letra D",
+    15: "Letra E",
+    16: "Letra F",
+    17: "Letra G",
+    18: "Letra I", // NOVO: Letra I
+    19: "Letra J", // NOVO: Letra J
+    20: "Letra K", // Reindexado
+    21: "Letra L", // Reindexado
+    22: "Letra M", // Reindexado
+    23: "Letra N", // Reindexado
+    24: "Letra P", // Reindexado
+    25: "Letra Q", // Reindexado
+    26: "Letra R", // Reindexado
+    27: "Letra T", // Reindexado
+    28: "Letra U", // Reindexado
+    29: "Letra V", // Reindexado
+    30: "Letra W", // Reindexado
+    31: "Letra X", // Reindexado
+    32: "Letra Y", // Reindexado
   };
 
   // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, // K foi adicionado
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // K foi adicionado
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
       // --- NOVO NOME DO MODELO TFLITE ---
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_J.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         print('Erro: Modelo carregado como dados vazios.');
@@ -191,8 +202,8 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     var input = landmarks.reshape([1, 63]);
-    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (31 classes)
-    var output = List<List<double>>.filled(1, List<double>.filled(32, 0.0));
+    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (33 classes)
+    var output = List<List<double>>.filled(1, List<double>.filled(33, 0.0));
 
     try {
       interpreter!.run(input, output);
@@ -217,6 +228,7 @@ class _CameraScreenState extends State<CameraScreen> {
         // K é o índice 18 e 2 é o índice 2.
         final int kIndex = 18;
         final int twoIndex = 2;
+        final int iIndex = 19; // Letra I (começo do J)
 
         // Verifica se a sequência K-2 apareceu nos últimos frames
         bool isDynamicH = false;
@@ -235,27 +247,44 @@ class _CameraScreenState extends State<CameraScreen> {
           // }
         }
 
+        // 2. Verifica o sinal dinâmico 'J' (I + movimento)
+        // Uma lógica simplificada: se a sequência 'I' apareceu e o frame seguinte não foi 'I'
+        bool isDynamicJ = false;
+        if (_predictionHistory.length >= 2 &&
+            _predictionHistory[_predictionHistory.length - 2] == iIndex &&
+            _predictionHistory[_predictionHistory.length - 1] != iIndex) {
+            isDynamicJ = true;
+        }
+
         if (isDynamicH) {
-          finalResult = "Letra H";
-          finalIndex = -1; // Use um índice único para sinais dinâmicos, ex: -1 para 'H'
-          _predictionHistory.clear(); // Limpa o histórico após a detecção
-        } else if (predictedIndex == 0) {
-          if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex)) {
-            finalResult = "Letra O (Inferido por contexto)";
-            finalIndex = 0; // O é 0, reajustando para um valor que já existe.
+          finalResult = "Letra H (Sinal Dinâmico)";
+          finalIndex = -1; // Índice negativo para H
+          _predictionHistory.clear();
+        } else if (isDynamicJ) {
+          finalResult = "Letra J (Sinal Dinâmico)";
+          finalIndex = -2; // Índice negativo para J
+          _predictionHistory.clear();
+        } 
+        
+        // --- LÓGICA DE CONTEXTO AMBÍGUO (Sinais estáticos) ---
+        else if (predictedIndex == 0) { // Sinal Ambíguo 0/O
+          if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
+            finalResult = "Letra O (Contexto)";
+            finalIndex = 0; // O é 0, mantemos o índice 0 para a letra O
           } else {
-            finalResult = "Número 0 (Inferido por contexto)";
+            finalResult = "Número 0 (Contexto)";
             finalIndex = 0;
           }
-        } else if (predictedIndex == 8) {
-          if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex)) {
-            finalResult = "Letra S (Inferido por contexto)";
+        } else if (predictedIndex == 8) { // Sinal Ambíguo 8/S
+          if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
+            finalResult = "Letra S (Contexto)";
             finalIndex = 8;
           } else {
-            finalResult = "Número 8 (Inferido por contexto)";
+            finalResult = "Número 8 (Contexto)";
             finalIndex = 8;
-          }
-        } else {
+          } 
+        } 
+        else {
           // Se não for um sinal dinâmico nem ambíguo, use a previsão normal.
           finalResult = "${classMapping[predictedIndex]} (Conf: ${(confidence * 100).toStringAsFixed(2)}%)";
           finalIndex = predictedIndex;
