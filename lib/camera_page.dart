@@ -17,6 +17,20 @@ import 'package:flutter/services.dart' show rootBundle;
 //  runApp(const MyApp());
 // }
 
+// Extensão para reshape (necessária para tflite_flutter)
+extension on List<double> {
+  List<List<double>> reshape(List<int> shape) {
+    if (shape.length != 2 || shape[0] * shape[1] != length) {
+      throw ArgumentError('A forma fornecida não é compatível com o tamanho da lista.');
+    }
+    final result = <List<double>>[];
+    for (int i = 0; i < shape[0]; i++) {
+      result.add(sublist(i * shape[1], (i + 1) * shape[1]));
+    }
+    return result;
+  }
+}
+
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
 
@@ -132,7 +146,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _startSendingPictures() {
-    _timer = Timer.periodic(const Duration(milliseconds: 300), (timer) async { // Aumentando a frequência de captura para 300ms
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async { // Mudando a frequência de captura para 500ms
       if (!_controller.value.isInitialized || _isSendingPicture) {
         return;
       }
@@ -226,33 +240,27 @@ class _CameraScreenState extends State<CameraScreen> {
 
         // Verifica o sinal dinâmico 'H' (K seguido de 2)
         // K é o índice 18 e 2 é o índice 2.
-        final int kIndex = 18;
+        final int kIndex = 20;
         final int twoIndex = 2;
-        final int iIndex = 19; // Letra I (começo do J)
+        final int iIndex = 18; // Letra I (começo do J)
+        final int jIndex = 19; // Letra J
 
-        // Verifica se a sequência K-2 apareceu nos últimos frames
-        bool isDynamicH = false;
-        if (_predictionHistory.length >= 2) {
-          // Checa se o último frame foi 2 e o penúltimo foi K
-          if (_predictionHistory[_predictionHistory.length - 1] == twoIndex &&
-              _predictionHistory[_predictionHistory.length - 2] == kIndex) {
-            isDynamicH = true;
-          }
-          // Pode adicionar outras variações, como K-K-2
-          // if (_predictionHistory.length >= 3 &&
-          //     _predictionHistory[_predictionHistory.length - 1] == twoIndex &&
-          //     _predictionHistory[_predictionHistory.length - 2] == kIndex &&
-          //     _predictionHistory[_predictionHistory.length - 3] == kIndex) {
-          //   isDynamicH = true;
-          // }
+         bool isDynamicH = false;
+        bool isDynamicJ = false;
+
+        // 1. Verifica o sinal dinâmico 'H' (K seguido de 2)
+        if (_predictionHistory.length >= 2 &&
+            _predictionHistory[_predictionHistory.length - 2] == kIndex &&
+            _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
+          isDynamicH = true;
         }
 
-        // 2. Verifica o sinal dinâmico 'J' (I + movimento)
-        // Uma lógica simplificada: se a sequência 'I' apareceu e o frame seguinte não foi 'I'
-        bool isDynamicJ = false;
+        // 2. CORREÇÃO: Verifica o sinal dinâmico 'J' (I seguido de J no histórico)
+        // O sinal J é o movimento do I. Se o modelo estático detecta I e o próximo frame é J,
+        // o sinal dinâmico foi detectado.
         if (_predictionHistory.length >= 2 &&
             _predictionHistory[_predictionHistory.length - 2] == iIndex &&
-            _predictionHistory[_predictionHistory.length - 1] != iIndex) {
+            _predictionHistory[_predictionHistory.length - 1] == jIndex) { // Corrigido para buscar I seguido de J
             isDynamicJ = true;
         }
 
@@ -264,7 +272,7 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResult = "Letra J (Sinal Dinâmico)";
           finalIndex = -2; // Índice negativo para J
           _predictionHistory.clear();
-        } 
+        }  
         
         // --- LÓGICA DE CONTEXTO AMBÍGUO (Sinais estáticos) ---
         else if (predictedIndex == 0) { // Sinal Ambíguo 0/O
