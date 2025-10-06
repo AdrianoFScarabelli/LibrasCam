@@ -10,4 +10,8 @@ A principal ferramenta utilizada na identificação dos sinais de **Libras** foi
 
 <img width="2146" height="744" alt="image" src="https://github.com/user-attachments/assets/855fc63d-583b-4b55-a2b2-aee8c77a20b0" />
 
+Além do **MediaPipe** e **TensorFlow**, também foi utilizada a biblioteca **NumPy**, essa biblioteca é conhecida pelo seu processamento de grandes arranjos e matrizes de dados, utilizando muitas funções matemáticas para operar essas matrizes. Com essa biblioteca, o processamento das imagens enviadas pelo aplicativo se torna muito mais eficiente, pois o **NumPy** transforma os bytes brutos da imagem em um formato que o **OpenCV** e o **MediaPipe** possam entender e processar de forma muito melhor. Além disso, o **NumPy** se torna muito importante para o treinamento dos modelos **TensorFlow**, pois ele é capaz de transformar as coordenadas X, Y e Z de cada um dos 21 landmarks da mão detectados pelo **MediaPipe** e os coloca em uma lista **Python** simples, que futuramente é transformada em um array **NumPy**, garantindo uma melhor organização desses valores.
+
+Como foi utilizado o framework **Flutter** para o desenvolvimento do aplicativo, foi necessário realizar a conversão dos modelos treinados em **TensorFlow** para **TensorFlow Lite**, garantindo compatibilidade e desempenho adequado em dispositivos móveis.
+
 **PROJETO EM DESENVOLVIMENTO**
