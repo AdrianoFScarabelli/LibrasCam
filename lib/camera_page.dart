@@ -89,17 +89,18 @@ class _CameraScreenState extends State<CameraScreen> {
     30: "Letra W", // Reindexado
     31: "Letra X", // Reindexado
     32: "Letra Y", // Reindexado
+    33: "Sinal Oi", // Reindexado
   };
 
   // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // K foi adicionado
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, // Oi foi adicionado
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
       // --- NOVO NOME DO MODELO TFLITE ---
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_J.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X_oi.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         print('Erro: Modelo carregado como dados vazios.');
@@ -107,7 +108,7 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       interpreter = Interpreter.fromBuffer(modelBytes);
-      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_X.tflite) carregado com sucesso.');
+      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_X_oi.tflite) carregado com sucesso.');
     } catch (e) {
       print('❌ Falha ao carregar o modelo TFLite: $e');
       setState(() { resultado = "Erro ao carregar o modelo de reconhecimento."; });
@@ -216,8 +217,8 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     var input = landmarks.reshape([1, 63]);
-    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (33 classes)
-    var output = List<List<double>>.filled(1, List<double>.filled(33, 0.0));
+    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (34 classes)
+    var output = List<List<double>>.filled(1, List<double>.filled(34, 0.0));
 
     try {
       interpreter!.run(input, output);
