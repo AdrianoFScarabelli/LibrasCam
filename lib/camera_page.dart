@@ -90,17 +90,22 @@ class _CameraScreenState extends State<CameraScreen> {
     31: "Letra X", // Reindexado
     32: "Letra Y", // Reindexado
     33: "Sinal Oi", // Reindexado
+    34: "Sinal Olá/Tchau",
+    35: "Sinal Joia",
+    36: "Sinal Desculpa",
+    37: "Sinal Saudade",
+    38: "Sinal Obrigado",
   };
 
   // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, // Oi foi adicionado
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
       // --- NOVO NOME DO MODELO TFLITE ---
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X_oi.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X_obrigado.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         print('Erro: Modelo carregado como dados vazios.');
@@ -108,7 +113,7 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       interpreter = Interpreter.fromBuffer(modelBytes);
-      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_X_oi.tflite) carregado com sucesso.');
+      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_X_obrigado.tflite) carregado com sucesso.');
     } catch (e) {
       print('❌ Falha ao carregar o modelo TFLite: $e');
       setState(() { resultado = "Erro ao carregar o modelo de reconhecimento."; });
@@ -218,7 +223,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
     var input = landmarks.reshape([1, 63]);
     // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (34 classes)
-    var output = List<List<double>>.filled(1, List<double>.filled(34, 0.0));
+    var output = List<List<double>>.filled(1, List<double>.filled(39, 0.0));
 
     try {
       interpreter!.run(input, output);
