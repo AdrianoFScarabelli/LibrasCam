@@ -177,9 +177,6 @@ class _CameraScreenState extends State<CameraScreen> {
     // Restaura as orientações permitidas ao sair da tela
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
     ]);
     
     super.dispose();

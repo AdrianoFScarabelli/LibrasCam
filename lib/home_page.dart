@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Adicione este import
 import 'package:librascam/app_controller.dart';
 
-class HomePage extends StatefulWidget {
+
+class HomePage extends StatefulWidget{
   const HomePage({super.key});
 
   @override
@@ -10,22 +12,40 @@ class HomePage extends StatefulWidget {
   }
 }
 
+
 class HomePageState extends State<HomePage> {
+
+  @override
+  void initState() {
+    super.initState();
+    // Trava a tela no modo retrato
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+  }
+
+  @override
+  void dispose() {
+    // Restaura todas as orientações ao sair da tela
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Obter dimensões da tela
     final screenSize = MediaQuery.sizeOf(context);
     final screenWidth = screenSize.width;
     final screenHeight = screenSize.height;
     
-    // Calcular tamanhos proporcionais
-    final titleFontSize = screenWidth * 0.1; // 10% da largura
-    final welcomeFontSize = screenWidth * 0.055; // 5.5% da largura
-    final descriptionFontSize = screenWidth * 0.045; // 4.5% da largura
-    final imageSize = screenWidth * 0.18; // 18% da largura
-    final arrowSize = screenWidth * 0.09; // 9% da largura
-    final cameraButtonSize = screenWidth * 0.25; // 25% da largura
-    final horizontalPadding = screenWidth * 0.15; // 15% da largura
+    final titleFontSize = screenWidth * 0.1;
+    final welcomeFontSize = screenWidth * 0.055;
+    final descriptionFontSize = screenWidth * 0.045;
+    final imageSize = screenWidth * 0.18;
+    final arrowSize = screenWidth * 0.09;
+    final cameraButtonSize = screenWidth * 0.25;
+    final horizontalPadding = screenWidth * 0.15;
     
     return Scaffold(
       body: SafeArea(
@@ -48,12 +68,15 @@ class HomePageState extends State<HomePage> {
                         fontSize: titleFontSize.clamp(30.0, 50.0),
                       ),
                     ),
-                    const Divider(
-                      color: Colors.black,
-                      thickness: 4,
-                    ),
                   ],
                 ),
+              ),
+              const Divider(
+                color: Colors.black,
+                thickness: 4,
+                height: 20,
+                indent: 0,
+                endIndent: 0,
               ),
               SizedBox(height: screenHeight * 0.025),
               Center(
@@ -148,6 +171,7 @@ class HomePageState extends State<HomePage> {
   }
 }
 
+
 class CustomSwitch extends StatelessWidget {
   const CustomSwitch({super.key});
 
@@ -155,7 +179,7 @@ class CustomSwitch extends StatelessWidget {
   Widget build(BuildContext context) {
     return Switch(
       value: AppController.instance.darkTheme,
-      onChanged: (value) {
+      onChanged: (value){
         AppController.instance.changeTheme();
       },
       activeColor: const Color.fromARGB(255, 5, 125, 10),
