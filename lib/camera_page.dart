@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -7,7 +8,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http_parser/http_parser.dart';
-import 'package:flutter/services.dart' show rootBundle;
+
 
 // Certifique-se de que a variável global _cameras é inicializada em main.dart
 // late List<CameraDescription> _cameras;
@@ -16,6 +17,7 @@ import 'package:flutter/services.dart' show rootBundle;
 //  _cameras = await availableCameras();
 //  runApp(const MyApp());
 // }
+
 
 // Extensão para reshape (necessária para tflite_flutter)
 extension on List<double> {
@@ -31,14 +33,18 @@ extension on List<double> {
   }
 }
 
+
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
 
+
   const CameraScreen({super.key, required this.camera});
+
 
   @override
   _CameraScreenState createState() => _CameraScreenState();
 }
+
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
@@ -48,10 +54,12 @@ class _CameraScreenState extends State<CameraScreen> {
   Timer? _timer;
   bool _isSendingPicture = false;
 
+
   // Variável para armazenar o último sinal reconhecido.
   int? _lastRecognizedIndex;
   // Nova lista para armazenar os últimos 'N' frames para lógica de contexto.
   final List<int> _predictionHistory = [];
+
 
   // --- NOVO MAPeamento de rótulos ---
   // Este mapeamento deve ser idêntico ao do `captLandmarks.py` e `treinoLandmarks.py`
@@ -97,10 +105,12 @@ class _CameraScreenState extends State<CameraScreen> {
     38: "Sinal Obrigado",
   };
 
+
   // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
   };
+
 
   Future<void> _loadModelFromBytes() async {
     try {
@@ -120,9 +130,17 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+
   @override
   void initState() {
     super.initState();
+    
+    // Trava a orientação em modo paisagem
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    
     _loadModelFromBytes();
     _controller = CameraController(
       widget.camera,
@@ -133,6 +151,12 @@ class _CameraScreenState extends State<CameraScreen> {
       if (!mounted) {
         return;
       }
+      // Trava a orientação da câmera em paisagem
+      _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
+
+      // Desativa o flash da câmera permanentemente
+      _controller.setFlashMode(FlashMode.off);
+
       _startSendingPictures();
       setState(() {});
     }).catchError((e) {
@@ -143,13 +167,24 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
+
   @override
   void dispose() {
     _timer?.cancel();
     _controller.dispose();
     interpreter?.close();
+    
+    // Restaura as orientações permitidas ao sair da tela
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    
     super.dispose();
   }
+
 
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async { // Mudando a frequência de captura para 500ms
@@ -158,10 +193,12 @@ class _CameraScreenState extends State<CameraScreen> {
       }
       _isSendingPicture = true;
 
+
       try {
         final XFile imageFile = await _controller.takePicture();
         final File file = File(imageFile.path);
         final Uint8List imageBytes = await file.readAsBytes();
+
 
         final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
         var request = http.MultipartRequest('POST', uri);
@@ -172,11 +209,14 @@ class _CameraScreenState extends State<CameraScreen> {
           contentType: MediaType('image', 'jpeg'),
         ));
 
+
         var response = await request.send();
+
 
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
           var jsonResponse = jsonDecode(responseBody);
+
 
           if (jsonResponse['landmarks'] != null) {
             List<dynamic> rawLandmarks = jsonResponse['landmarks'];
@@ -221,17 +261,21 @@ class _CameraScreenState extends State<CameraScreen> {
       return;
     }
 
+
     var input = landmarks.reshape([1, 63]);
     // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (34 classes)
     var output = List<List<double>>.filled(1, List<double>.filled(39, 0.0));
 
+
     try {
       interpreter!.run(input, output);
+
 
       var probabilities = output[0];
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
+
 
       if (confidence > 0.55) {
         // Adiciona a previsão ao histórico
@@ -240,9 +284,11 @@ class _CameraScreenState extends State<CameraScreen> {
           _predictionHistory.removeAt(0);
         }
 
+
         // --- LÓGICA DE CONTEXTO E DINÂMICA (NOVA) ---
         String finalResult;
         int finalIndex;
+
 
         // Verifica o sinal dinâmico 'H' (K seguido de 2)
         // K é o índice 18 e 2 é o índice 2.
@@ -251,8 +297,10 @@ class _CameraScreenState extends State<CameraScreen> {
         final int iIndex = 18; // Letra I (começo do J)
         final int jIndex = 19; // Letra J
 
+
          bool isDynamicH = false;
         bool isDynamicJ = false;
+
 
         // 1. Verifica o sinal dinâmico 'H' (K seguido de 2)
         if (_predictionHistory.length >= 2 &&
@@ -260,6 +308,7 @@ class _CameraScreenState extends State<CameraScreen> {
             _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
           isDynamicH = true;
         }
+
 
         // 2. CORREÇÃO: Verifica o sinal dinâmico 'J' (I seguido de J no histórico)
         // O sinal J é o movimento do I. Se o modelo estático detecta I e o próximo frame é J,
@@ -269,6 +318,7 @@ class _CameraScreenState extends State<CameraScreen> {
             _predictionHistory[_predictionHistory.length - 1] == jIndex) { // Corrigido para buscar I seguido de J
             isDynamicJ = true;
         }
+
 
         if (isDynamicH) {
           finalResult = "Letra H (Sinal Dinâmico)";
@@ -304,7 +354,9 @@ class _CameraScreenState extends State<CameraScreen> {
           finalIndex = predictedIndex;
         }
 
+
         // --- FIM DA LÓGICA DE CONTEXTO E DINÂMICA ---
+
 
         if (mounted) {
           setState(() {
@@ -331,34 +383,53 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
+    // Obter dimensões da tela em modo paisagem
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenWidth = screenSize.width; // Largura em paisagem (maior dimensão)
+    final screenHeight = screenSize.height; // Altura em paisagem (menor dimensão)
+    
+    // Calcular tamanhos proporcionais para modo paisagem
+    final appBarFontSize = screenHeight * 0.08; // 8% da altura
+    final resultFontSize = screenHeight * 0.09; // 9% da altura
+    final containerHeight = screenHeight * 0.15; // 15% da altura para o container de resultado
+    final containerPadding = screenWidth * 0.02; // 2% da largura
+    
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Reconhecimento de Libras"),
-      ),
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
             return Stack(
               children: [
+                // Preview da câmera ocupando toda a tela
                 Positioned.fill(
-                  child: AspectRatio(
-                    aspectRatio: _controller.value.aspectRatio,
-                    child: CameraPreview(_controller),
-                  ),
+                  child: CameraPreview(_controller),
                 ),
-                Align(
-                  alignment: Alignment.bottomCenter,
+                // Container com texto de resultado na parte inferior
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
                   child: Container(
-                    padding: const EdgeInsets.all(16.0),
-                    color: Colors.black54,
-                    width: double.infinity,
-                    child: Text(
-                      resultado,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold),
+                    height: containerHeight,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: containerPadding,
+                      vertical: containerPadding * 0.5,
+                    ),
+                    color: Colors.black87,
+                    child: Center(
+                      child: Text(
+                        resultado,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: resultFontSize.clamp(16.0, 28.0), 
+                          color: Colors.white, 
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ),
