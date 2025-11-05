@@ -144,7 +144,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _loadModelFromBytes();
     _controller = CameraController(
       widget.camera,
-      ResolutionPreset.max,
+      ResolutionPreset.high,
       enableAudio: false,
     );
     _initializeControllerFuture = _controller.initialize().then((_) {
