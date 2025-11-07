@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // Para SystemChrome e rootBundle
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -8,16 +8,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http_parser/http_parser.dart';
-
-
-// Certifique-se de que a variável global _cameras é inicializada em main.dart
-// late List<CameraDescription> _cameras;
-// Future<void> main() async {
-//  WidgetsFlutterBinding.ensureInitialized();
-//  _cameras = await availableCameras();
-//  runApp(const MyApp());
-// }
-
+import 'package:image/image.dart' as img; // Para redimensionamento
 
 // Extensão para reshape (necessária para tflite_flutter)
 extension on List<double> {
@@ -33,18 +24,12 @@ extension on List<double> {
   }
 }
 
-
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
-
-
   const CameraScreen({super.key, required this.camera});
-
-
   @override
   _CameraScreenState createState() => _CameraScreenState();
 }
-
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
@@ -54,67 +39,36 @@ class _CameraScreenState extends State<CameraScreen> {
   Timer? _timer;
   bool _isSendingPicture = false;
 
-
-  // Variável para armazenar o último sinal reconhecido.
   int? _lastRecognizedIndex;
-  // Nova lista para armazenar os últimos 'N' frames para lógica de contexto.
   final List<int> _predictionHistory = [];
+  final int _historyLength = 5;
 
-
-  // --- NOVO MAPeamento de rótulos ---
-  // Este mapeamento deve ser idêntico ao do `captLandmarks.py` e `treinoLandmarks.py`
+  // --- MAPeamento de rótulos (ATUALIZADO PARA 39 CLASSES) ---
   final Map<int, String> classMapping = {
-    0: "Sinal Ambíguo 0/O",
-    1: "Número 1", 
-    2: "Número 2", 
-    3: "Número 3", 
-    4: "Número 4",
-    5: "Número 5", 
-    6: "Número 6", 
-    7: "Número 7",
-    8: "Sinal Ambíguo 8/S",
-    9: "Número 9",
-    10: "Outros Sinais",
-    11: "Letra A",
-    12: "Letra B",
-    13: "Letra C",
-    14: "Letra D",
-    15: "Letra E",
-    16: "Letra F",
-    17: "Letra G",
-    18: "Letra I", // NOVO: Letra I
-    19: "Letra J", // NOVO: Letra J
-    20: "Letra K", // Reindexado
-    21: "Letra L", // Reindexado
-    22: "Letra M", // Reindexado
-    23: "Letra N", // Reindexado
-    24: "Letra P", // Reindexado
-    25: "Letra Q", // Reindexado
-    26: "Letra R", // Reindexado
-    27: "Letra T", // Reindexado
-    28: "Letra U", // Reindexado
-    29: "Letra V", // Reindexado
-    30: "Letra W", // Reindexado
-    31: "Letra X", // Reindexado
-    32: "Letra Y", // Reindexado
-    33: "Sinal Oi", // Reindexado
+    0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
+    5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
+    10: "Outros Sinais", 11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
+    15: "Letra E", 16: "Letra F", 17: "Letra G", 18: "Letra K", 19: "Letra J",
+    20: "Letra I", 21: "Letra L", 22: "Letra M", 23: "Letra N", 24: "Letra P",
+    25: "Letra Q", 26: "Letra R", 27: "Letra T", 28: "Letra U", 29: "Letra V",
+    30: "Letra W", 31: "Letra X", 32: "Letra Y",
+    33: "Sinal Oi",
     34: "Sinal Olá/Tchau",
     35: "Sinal Joia",
     36: "Sinal Desculpa",
     37: "Sinal Saudade",
-    38: "Sinal Obrigado",
+    38: "Sinal Obrigado"
   };
 
-
-  // --- NOVO Conjunto de índices que correspondem a letras (inclui os ambíguos) ---
+  // --- Conjunto de índices que correspondem a letras (para lógica de contexto) ---
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+    // Inclui todos os rótulos de letras e os rótulos ambíguos que podem ser letras (0 e 8)
   };
-
 
   Future<void> _loadModelFromBytes() async {
     try {
-      // --- NOVO NOME DO MODELO TFLITE ---
+      // --- NOVO NOME DO MODELO TFLITE (126 FLOATS) ---
       final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X_obrigado.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
@@ -123,13 +77,12 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
       interpreter = Interpreter.fromBuffer(modelBytes);
-      print('✅ Modelo TFLite (libras_landmarks_0_a_9_outros_A_a_X_obrigado.tflite) carregado com sucesso.');
+      print('✅ Modelo TFLite (126 floats) carregado com sucesso.');
     } catch (e) {
       print('❌ Falha ao carregar o modelo TFLite: $e');
       setState(() { resultado = "Erro ao carregar o modelo de reconhecimento."; });
     }
   }
-
 
   @override
   void initState() {
@@ -144,7 +97,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _loadModelFromBytes();
     _controller = CameraController(
       widget.camera,
-      ResolutionPreset.high,
+      ResolutionPreset.medium, // Medium para capturar, mas vamos redimensionar
       enableAudio: false,
     );
     _initializeControllerFuture = _controller.initialize().then((_) {
@@ -153,7 +106,6 @@ class _CameraScreenState extends State<CameraScreen> {
       }
       // Trava a orientação da câmera em paisagem
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
-
       // Desativa o flash da câmera permanentemente
       _controller.setFlashMode(FlashMode.off);
 
@@ -166,7 +118,6 @@ class _CameraScreenState extends State<CameraScreen> {
       });
     });
   }
-
 
   @override
   void dispose() {
@@ -182,49 +133,67 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
-
   void _startSendingPictures() {
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async { // Mudando a frequência de captura para 500ms
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) {
         return;
       }
       _isSendingPicture = true;
 
-
       try {
         final XFile imageFile = await _controller.takePicture();
-        final File file = File(imageFile.path);
-        final Uint8List imageBytes = await file.readAsBytes();
+        
+        // --- OTIMIZAÇÃO: REDIMENSIONAR IMAGEM ANTES DE ENVIAR ---
+        final Uint8List originalImageBytes = await File(imageFile.path).readAsBytes();
+        img.Image? originalImage = img.decodeImage(originalImageBytes);
+        Uint8List finalImageBytes;
 
+        if (originalImage != null) {
+          // Redimensiona para 192x192 (um bom tamanho para MediaPipe Hands)
+          img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
+          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 85));
+          // print("Imagem redimensionada para 192x192."); // Opcional: remover para logs mais limpos
+        } else {
+          print("⚠️ Erro: Não foi possível decodificar imagem, enviando original.");
+          finalImageBytes = originalImageBytes; // Fallback
+        }
+        // --- FIM DA OTIMIZAÇÃO ---
 
         final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
         var request = http.MultipartRequest('POST', uri);
         request.files.add(http.MultipartFile.fromBytes(
           'imagem',
-          imageBytes,
+          finalImageBytes, // Envia a imagem redimensionada
           filename: 'camera_frame.jpg',
           contentType: MediaType('image', 'jpeg'),
         ));
 
-
         var response = await request.send();
-
 
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
           var jsonResponse = jsonDecode(responseBody);
 
-
           if (jsonResponse['landmarks'] != null) {
             List<dynamic> rawLandmarks = jsonResponse['landmarks'];
-            var landmarks = Float32List.fromList(rawLandmarks.map((e) => e as double).toList());
-            _runInference(landmarks);
+            
+            // --- ATUALIZADO: VERIFICAR SE RECEBEU 126 FLOATS ---
+            if (rawLandmarks.length == 126) {
+              var landmarks = Float32List.fromList(rawLandmarks.map((e) => e as double).toList());
+              _runInference(landmarks);
+            } else {
+              print("Erro: O servidor não retornou 126 landmarks. Recebido: ${rawLandmarks.length}");
+              setState(() {
+                resultado = "Erro de dados do servidor (landmarks)";
+              });
+            }
+
           } else {
             if (mounted) {
               setState(() {
                 resultado = jsonResponse['mensagem'] ?? "Nenhuma mão detectada.";
                 _lastRecognizedIndex = null;
-                _predictionHistory.clear(); // Limpa o histórico se a mão for perdida
+                _predictionHistory.clear();
               });
             }
           }
@@ -257,81 +226,69 @@ class _CameraScreenState extends State<CameraScreen> {
       });
       return;
     }
-
-
-    var input = landmarks.reshape([1, 63]);
-    // O tamanho da lista de saída deve corresponder ao número de classes do seu novo modelo (34 classes)
-    var output = List<List<double>>.filled(1, List<double>.filled(39, 0.0));
-
+    
+    // --- ATUALIZADO: INPUT DE [1, 126] ---
+    var input = landmarks.reshape([1, 126]);
+    // --- ATUALIZADO: OUTPUT DE 39 CLASSES (0 a 38) ---
+    var output = List<List<double>>.filled(1, List<double>.filled(39, 0.0)); 
 
     try {
       interpreter!.run(input, output);
-
 
       var probabilities = output[0];
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
 
-
       if (confidence > 0.55) {
-        // Adiciona a previsão ao histórico
         _predictionHistory.add(predictedIndex);
-        if (_predictionHistory.length > 5) { // Mantém os últimos 5 frames no histórico
+        if (_predictionHistory.length > _historyLength) {
           _predictionHistory.removeAt(0);
         }
 
-
-        // --- LÓGICA DE CONTEXTO E DINÂMICA (NOVA) ---
         String finalResult;
         int finalIndex;
 
-
-        // Verifica o sinal dinâmico 'H' (K seguido de 2)
-        // K é o índice 18 e 2 é o índice 2.
-        final int kIndex = 20;
-        final int twoIndex = 2;
-        final int iIndex = 18; // Letra I (começo do J)
-        final int jIndex = 19; // Letra J
-
-
-         bool isDynamicH = false;
+        // --- DEFINIÇÃO DE ÍNDICES DINÂMICOS E AMBÍGUOS ---
+        // Estes índices DEVERÃO ser atualizados se o classMapping mudar
+        final int kIndex = 18;  // K
+        final int twoIndex = 2;   // Número 2
+        final int iIndex = 20;  // I
+        final int jIndex = 19;  // J
+        
+        bool isDynamicH = false;
         bool isDynamicJ = false;
 
-
-        // 1. Verifica o sinal dinâmico 'H' (K seguido de 2)
+        // 1. Verifica o sinal dinâmâmico 'H' (K -> 2)
         if (_predictionHistory.length >= 2 &&
             _predictionHistory[_predictionHistory.length - 2] == kIndex &&
             _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
           isDynamicH = true;
         }
 
-
-        // 2. CORREÇÃO: Verifica o sinal dinâmico 'J' (I seguido de J no histórico)
-        // O sinal J é o movimento do I. Se o modelo estático detecta I e o próximo frame é J,
-        // o sinal dinâmico foi detectado.
+        // 2. Verifica o sinal dinâmico 'J' (I -> J)
         if (_predictionHistory.length >= 2 &&
             _predictionHistory[_predictionHistory.length - 2] == iIndex &&
-            _predictionHistory[_predictionHistory.length - 1] == jIndex) { // Corrigido para buscar I seguido de J
+            _predictionHistory[_predictionHistory.length - 1] == jIndex) { 
             isDynamicJ = true;
         }
-
-
+        
+        // --- LÓGICA DE DECISÃO ---
         if (isDynamicH) {
           finalResult = "Letra H (Sinal Dinâmico)";
-          finalIndex = -1; // Índice negativo para H
+          finalIndex = -1; // Índice customizado para H
           _predictionHistory.clear();
         } else if (isDynamicJ) {
           finalResult = "Letra J (Sinal Dinâmico)";
-          finalIndex = -2; // Índice negativo para J
+          finalIndex = -2; // Índice customizado para J
           _predictionHistory.clear();
-        }  
+        } 
         
         // --- LÓGICA DE CONTEXTO AMBÍGUO (Sinais estáticos) ---
         else if (predictedIndex == 0) { // Sinal Ambíguo 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResult = "Letra O (Contexto)";
-            finalIndex = 0; // O é 0, mantemos o índice 0 para a letra O
+            finalIndex = 0;
           } else {
             finalResult = "Número 0 (Contexto)";
             finalIndex = 0;
@@ -346,14 +303,10 @@ class _CameraScreenState extends State<CameraScreen> {
           } 
         } 
         else {
-          // Se não for um sinal dinâmico nem ambíguo, use a previsão normal.
+          // Se não for dinâmico nem ambíguo, usa a previsão normal.
           finalResult = "${classMapping[predictedIndex]} (Conf: ${(confidence * 100).toStringAsFixed(2)}%)";
           finalIndex = predictedIndex;
         }
-
-
-        // --- FIM DA LÓGICA DE CONTEXTO E DINÂMICA ---
-
 
         if (mounted) {
           setState(() {
@@ -366,7 +319,7 @@ class _CameraScreenState extends State<CameraScreen> {
           setState(() {
             resultado = "Sinal não reconhecido (TFLite - Baixa Confiança)";
             _lastRecognizedIndex = null;
-            _predictionHistory.clear(); // Limpa o histórico se a confiança for baixa
+            _predictionHistory.clear();
           });
         }
       }
@@ -380,19 +333,15 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     // Obter dimensões da tela em modo paisagem
     final screenSize = MediaQuery.sizeOf(context);
-    final screenWidth = screenSize.width; // Largura em paisagem (maior dimensão)
     final screenHeight = screenSize.height; // Altura em paisagem (menor dimensão)
     
     // Calcular tamanhos proporcionais para modo paisagem
-    final appBarFontSize = screenHeight * 0.08; // 8% da altura
     final resultFontSize = screenHeight * 0.09; // 9% da altura
     final containerHeight = screenHeight * 0.15; // 15% da altura para o container de resultado
-    final containerPadding = screenWidth * 0.02; // 2% da largura
     
     return Scaffold(
       body: FutureBuilder<void>(
@@ -412,10 +361,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   right: 0,
                   child: Container(
                     height: containerHeight,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: containerPadding,
-                      vertical: containerPadding * 0.5,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                     color: Colors.black87,
                     child: Center(
                       child: Text(
