@@ -43,7 +43,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
 
-  // --- MAPeamento de rótulos (ATUALIZADO PARA 39 CLASSES) ---
+  // --- MAPeamento de rótulos (ATUALIZADO PARA 44 CLASSES - 0 a 43) ---
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
     5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
@@ -57,19 +57,23 @@ class _CameraScreenState extends State<CameraScreen> {
     35: "Sinal Joia",
     36: "Sinal Desculpa",
     37: "Sinal Saudade",
-    38: "Sinal Obrigado"
+    38: "Sinal Obrigado",
+    39: "Sinal Você",      // NOVO
+    40: "Sinal Conhecer",  // NOVO
+    41: "Sinal Licença",   // NOVO
+    42: "Sinal Abraço",    // NOVO
+    43: "Sinal Por Favor"  // NOVO
   };
 
   // --- Conjunto de índices que correspondem a letras (para lógica de contexto) ---
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
-    // Inclui todos os rótulos de letras e os rótulos ambíguos que podem ser letras (0 e 8)
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
       // --- NOVO NOME DO MODELO TFLITE (126 FLOATS) ---
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_0_a_9_outros_A_a_X_obrigado.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_porfavor.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         print('Erro: Modelo carregado como dados vazios.');
@@ -229,8 +233,8 @@ class _CameraScreenState extends State<CameraScreen> {
     
     // --- ATUALIZADO: INPUT DE [1, 126] ---
     var input = landmarks.reshape([1, 126]);
-    // --- ATUALIZADO: OUTPUT DE 39 CLASSES (0 a 38) ---
-    var output = List<List<double>>.filled(1, List<double>.filled(39, 0.0)); 
+    // --- ATUALIZADO: OUTPUT DE 44 CLASSES (0 a 43) ---
+    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); 
 
     try {
       interpreter!.run(input, output);
@@ -240,7 +244,7 @@ class _CameraScreenState extends State<CameraScreen> {
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
 
-      if (confidence > 0.55) {
+      if (confidence > 0.55) { // Limiar de confiança
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) {
           _predictionHistory.removeAt(0);
