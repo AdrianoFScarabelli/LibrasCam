@@ -58,17 +58,46 @@ class _CameraScreenState extends State<CameraScreen> {
     36: "Sinal Desculpa",
     37: "Sinal Saudade",
     38: "Sinal Obrigado",
-    39: "Sinal Você",      // NOVO
-    40: "Sinal Conhecer",  // NOVO
-    41: "Sinal Licença",   // NOVO
-    42: "Sinal Abraço",    // NOVO
-    43: "Sinal Por Favor"  // NOVO
+    39: "Sinal Você",
+    40: "Sinal Conhecer",
+    41: "Sinal Licença",
+    42: "Sinal Abraço",
+    43: "Sinal Por Favor",
   };
 
-  // --- Conjunto de índices que correspondem a letras (para lógica de contexto) ---
+  // --- CONJUNTOS DE FILTROS DE MÃOS ---
+  
+  // Índices de sinais que DEVEM usar DUAS MÃOS
+  final Set<int> twoHandedSignalIndices = {
+    41, // Licença (2 mãos)
+    42, // Abraço (2 mãos)
+    43, // Por Favor (2 mãos)
+    // Revise seus sinais de duas mãos. Se "Conhecer" (40) usa 2 mãos, adicione aqui.
+    // Se "Joia" (35) usa 2 mãos, adicione aqui.
+  };
+
+  // Índices de sinais que DEVEM usar UMA MÃO
+  final Set<int> oneHandedSignalIndices = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, // Números e Ambíguos
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // Letras
+    33, // Oi
+    34, // Olá/Tchau (depende da variação, mas geralmente é 1 mão)
+    35, // Joia
+    36, // Desculpa (geralmente 1 mão)
+    37, // Saudade
+    38, // Obrigado
+    39, // Você
+    40, // Conhecer
+    // Revise seus sinais. Se "Joia" (35) for 1 mão, adicione aqui.
+    // Se "Olá/Tchau" (34) for 1 mão, adicione aqui.
+  };
+
+  // Conjunto de índices que correspondem a letras (para lógica de contexto)
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
   };
+  // --- FIM DOS CONJUNTOS DE FILTROS ---
+
 
   Future<void> _loadModelFromBytes() async {
     try {
@@ -92,7 +121,6 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     
-    // Trava a orientação em modo paisagem
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -101,25 +129,18 @@ class _CameraScreenState extends State<CameraScreen> {
     _loadModelFromBytes();
     _controller = CameraController(
       widget.camera,
-      ResolutionPreset.medium, // Medium para capturar, mas vamos redimensionar
+      ResolutionPreset.medium,
       enableAudio: false,
     );
     _initializeControllerFuture = _controller.initialize().then((_) {
-      if (!mounted) {
-        return;
-      }
-      // Trava a orientação da câmera em paisagem
+      if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
-      // Desativa o flash da câmera permanentemente
       _controller.setFlashMode(FlashMode.off);
-
       _startSendingPictures();
       setState(() {});
     }).catchError((e) {
       print("Erro ao inicializar a câmera: $e");
-      setState(() {
-        resultado = "Erro ao iniciar a câmera.";
-      });
+      setState(() { resultado = "Erro ao iniciar a câmera."; });
     });
   }
 
@@ -128,12 +149,7 @@ class _CameraScreenState extends State<CameraScreen> {
     _timer?.cancel();
     _controller.dispose();
     interpreter?.close();
-    
-    // Restaura as orientações permitidas ao sair da tela
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-    ]);
-    
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
@@ -147,27 +163,23 @@ class _CameraScreenState extends State<CameraScreen> {
       try {
         final XFile imageFile = await _controller.takePicture();
         
-        // --- OTIMIZAÇÃO: REDIMENSIONAR IMAGEM ANTES DE ENVIAR ---
         final Uint8List originalImageBytes = await File(imageFile.path).readAsBytes();
         img.Image? originalImage = img.decodeImage(originalImageBytes);
         Uint8List finalImageBytes;
 
         if (originalImage != null) {
-          // Redimensiona para 192x192 (um bom tamanho para MediaPipe Hands)
           img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
           finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 85));
-          // print("Imagem redimensionada para 192x192."); // Opcional: remover para logs mais limpos
         } else {
           print("⚠️ Erro: Não foi possível decodificar imagem, enviando original.");
-          finalImageBytes = originalImageBytes; // Fallback
+          finalImageBytes = originalImageBytes;
         }
-        // --- FIM DA OTIMIZAÇÃO ---
 
         final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
         var request = http.MultipartRequest('POST', uri);
         request.files.add(http.MultipartFile.fromBytes(
           'imagem',
-          finalImageBytes, // Envia a imagem redimensionada
+          finalImageBytes,
           filename: 'camera_frame.jpg',
           contentType: MediaType('image', 'jpeg'),
         ));
@@ -181,15 +193,12 @@ class _CameraScreenState extends State<CameraScreen> {
           if (jsonResponse['landmarks'] != null) {
             List<dynamic> rawLandmarks = jsonResponse['landmarks'];
             
-            // --- ATUALIZADO: VERIFICAR SE RECEBEU 126 FLOATS ---
             if (rawLandmarks.length == 126) {
               var landmarks = Float32List.fromList(rawLandmarks.map((e) => e as double).toList());
               _runInference(landmarks);
             } else {
               print("Erro: O servidor não retornou 126 landmarks. Recebido: ${rawLandmarks.length}");
-              setState(() {
-                resultado = "Erro de dados do servidor (landmarks)";
-              });
+              setState(() { resultado = "Erro de dados do servidor (landmarks)"; });
             }
 
           } else {
@@ -203,11 +212,8 @@ class _CameraScreenState extends State<CameraScreen> {
           }
         } else {
           if (mounted) {
-            setState(() {
-              resultado = 'Erro do servidor: ${response.statusCode}';
-            });
+            setState(() { resultado = 'Erro do servidor: ${response.statusCode}'; });
           }
-          print('Erro do servidor: ${response.statusCode}');
         }
       } catch (e) {
         if (mounted) {
@@ -216,25 +222,41 @@ class _CameraScreenState extends State<CameraScreen> {
             print(e.runtimeType);
           });
         }
-        print('Erro: $e');
       } finally {
         _isSendingPicture = false;
       }
     });
   }
+
+  // --- NOVA FUNÇÃO: Verificador de Mãos ---
+  int _getDetectedHandCount(Float32List landmarks) {
+    // Verifica se a Mão Esquerda (primeira metade) tem dados
+    // Usamos um limiar pequeno (0.01) para evitar falsos positivos de ruído
+    double leftHandSum = landmarks.sublist(0, 63).fold(0.0, (prev, e) => prev + e.abs());
+    
+    // Verifica se a Mão Direita (segunda metade) tem dados
+    double rightHandSum = landmarks.sublist(63, 126).fold(0.0, (prev, e) => prev + e.abs());
+
+    bool isLeftHandDetected = leftHandSum > 0.1;
+    bool isRightHandDetected = rightHandSum > 0.1;
+
+    if (isLeftHandDetected && isRightHandDetected) {
+      return 2;
+    } else if (isLeftHandDetected || isRightHandDetected) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
   
   void _runInference(Float32List landmarks) {
     if (interpreter == null) {
-      setState(() {
-        resultado = "Modelo não carregado.";
-      });
+      setState(() { resultado = "Modelo não carregado."; });
       return;
     }
     
-    // --- ATUALIZADO: INPUT DE [1, 126] ---
     var input = landmarks.reshape([1, 126]);
-    // --- ATUALIZADO: OUTPUT DE 44 CLASSES (0 a 43) ---
-    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); 
+    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); // ATUALIZADO: 44 classes
 
     try {
       interpreter!.run(input, output);
@@ -244,7 +266,39 @@ class _CameraScreenState extends State<CameraScreen> {
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
 
-      if (confidence > 0.55) { // Limiar de confiança
+      if (confidence > 0.55) {
+        
+        // --- NOVO: FILTRO DE CONTAGEM DE MÃOS ---
+        int detectedHandCount = _getDetectedHandCount(landmarks);
+        bool expectedTwoHands = twoHandedSignalIndices.contains(predictedIndex);
+        bool expectedOneHand = oneHandedSignalIndices.contains(predictedIndex);
+
+        // Se o modelo previu um sinal de DUAS MÃOS, mas só UMA foi detectada
+        if (expectedTwoHands && detectedHandCount == 1) {
+          if (mounted) {
+            setState(() {
+              resultado = "${classMapping[predictedIndex]} (Requer 2 Mãos)";
+              _lastRecognizedIndex = null;
+              _predictionHistory.clear();
+            });
+          }
+          return; // Interrompe a lógica
+        }
+        
+        // Se o modelo previu um sinal de UMA MÃO, mas DUAS foram detectadas
+        if (expectedOneHand && detectedHandCount == 2) {
+          if (mounted) {
+            setState(() {
+              resultado = "${classMapping[predictedIndex]} (Requer 1 Mão)";
+              _lastRecognizedIndex = null;
+              _predictionHistory.clear();
+            });
+          }
+          return; // Interrompe a lógica
+        }
+        // --- FIM DO FILTRO ---
+
+
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) {
           _predictionHistory.removeAt(0);
@@ -253,42 +307,36 @@ class _CameraScreenState extends State<CameraScreen> {
         String finalResult;
         int finalIndex;
 
-        // --- DEFINIÇÃO DE ÍNDICES DINÂMICOS E AMBÍGUOS ---
-        // Estes índices DEVERÃO ser atualizados se o classMapping mudar
-        final int kIndex = 18;  // K
-        final int twoIndex = 2;   // Número 2
-        final int iIndex = 20;  // I
-        final int jIndex = 19;  // J
+        // Índices para lógica dinâmica e ambígua
+        final int kIndex = 18;
+        final int twoIndex = 2;
+        final int iIndex = 20;
+        final int jIndex = 19;
         
         bool isDynamicH = false;
         bool isDynamicJ = false;
 
-        // 1. Verifica o sinal dinâmâmico 'H' (K -> 2)
-        if (_predictionHistory.length >= 2 &&
-            _predictionHistory[_predictionHistory.length - 2] == kIndex &&
-            _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
-          isDynamicH = true;
-        }
-
-        // 2. Verifica o sinal dinâmico 'J' (I -> J)
-        if (_predictionHistory.length >= 2 &&
-            _predictionHistory[_predictionHistory.length - 2] == iIndex &&
-            _predictionHistory[_predictionHistory.length - 1] == jIndex) { 
+        if (_predictionHistory.length >= 2) {
+          if (_predictionHistory[_predictionHistory.length - 2] == kIndex &&
+              _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
+            isDynamicH = true;
+          }
+          if (_predictionHistory[_predictionHistory.length - 2] == iIndex &&
+              _predictionHistory[_predictionHistory.length - 1] == jIndex) { 
             isDynamicJ = true;
+          }
         }
         
-        // --- LÓGICA DE DECISÃO ---
         if (isDynamicH) {
           finalResult = "Letra H (Sinal Dinâmico)";
-          finalIndex = -1; // Índice customizado para H
+          finalIndex = -1; 
           _predictionHistory.clear();
         } else if (isDynamicJ) {
           finalResult = "Letra J (Sinal Dinâmico)";
-          finalIndex = -2; // Índice customizado para J
+          finalIndex = -2;
           _predictionHistory.clear();
         } 
         
-        // --- LÓGICA DE CONTEXTO AMBÍGUO (Sinais estáticos) ---
         else if (predictedIndex == 0) { // Sinal Ambíguo 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResult = "Letra O (Contexto)";
@@ -307,7 +355,7 @@ class _CameraScreenState extends State<CameraScreen> {
           } 
         } 
         else {
-          // Se não for dinâmico nem ambíguo, usa a previsão normal.
+          // Previsão normal (passou no filtro de contagem de mãos)
           finalResult = "${classMapping[predictedIndex]} (Conf: ${(confidence * 100).toStringAsFixed(2)}%)";
           finalIndex = predictedIndex;
         }
@@ -339,13 +387,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Obter dimensões da tela em modo paisagem
     final screenSize = MediaQuery.sizeOf(context);
-    final screenHeight = screenSize.height; // Altura em paisagem (menor dimensão)
+    final screenHeight = screenSize.height; 
     
-    // Calcular tamanhos proporcionais para modo paisagem
-    final resultFontSize = screenHeight * 0.09; // 9% da altura
-    final containerHeight = screenHeight * 0.15; // 15% da altura para o container de resultado
+    final resultFontSize = screenHeight * 0.09;
+    final containerHeight = screenHeight * 0.15;
     
     return Scaffold(
       body: FutureBuilder<void>(
@@ -354,11 +400,9 @@ class _CameraScreenState extends State<CameraScreen> {
           if (snapshot.connectionState == ConnectionState.done) {
             return Stack(
               children: [
-                // Preview da câmera ocupando toda a tela
                 Positioned.fill(
                   child: CameraPreview(_controller),
                 ),
-                // Container com texto de resultado na parte inferior
                 Positioned(
                   bottom: 0,
                   left: 0,
