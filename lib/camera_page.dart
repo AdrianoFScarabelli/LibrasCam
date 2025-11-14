@@ -10,7 +10,7 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img; // Para redimensionamento
 
-// Extensão para reshape (necessária para tflite_flutter)
+// Extensão para reshape
 extension on List<double> {
   List<List<double>> reshape(List<int> shape) {
     if (shape.length != 2 || shape[0] * shape[1] != length) {
@@ -43,95 +43,77 @@ class _CameraScreenState extends State<CameraScreen> {
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
 
-  // --- MAPeamento de rótulos (ATUALIZADO PARA 44 CLASSES - 0 a 43) ---
+  // --- MAPeamento de rótulos (44 CLASSES: 0 a 43) ---
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
     5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
-    10: "Outros Sinais", 11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
+    10: "Outros Sinais", 
+    11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
     15: "Letra E", 16: "Letra F", 17: "Letra G", 18: "Letra K", 19: "Letra J",
     20: "Letra I", 21: "Letra L", 22: "Letra M", 23: "Letra N", 24: "Letra P",
     25: "Letra Q", 26: "Letra R", 27: "Letra T", 28: "Letra U", 29: "Letra V",
     30: "Letra W", 31: "Letra X", 32: "Letra Y",
-    33: "Sinal Oi",
-    34: "Sinal Olá/Tchau",
-    35: "Sinal Joia",
-    36: "Sinal Desculpa",
-    37: "Sinal Saudade",
-    38: "Sinal Obrigado",
-    39: "Sinal Você",
-    40: "Sinal Conhecer",
-    41: "Sinal Licença",
-    42: "Sinal Abraço",
-    43: "Sinal Por Favor",
+    33: "Sinal Oi", 34: "Sinal Olá/Tchau", 35: "Sinal Joia", 36: "Sinal Desculpa",
+    37: "Sinal Saudade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
+    41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor"
   };
 
-  // --- CONJUNTOS DE FILTROS DE MÃOS ---
+  // --- LISTAS DE CONTROLE DE MÃOS ---
   
-  // Índices de sinais que DEVEM usar DUAS MÃOS
+  // Sinais que OBRIGATORIAMENTE usam 2 mãos
+  // Ajuste conforme você treinou. Se "Obrigado" foi treinado com 1 mão, mova para a lista de baixo.
   final Set<int> twoHandedSignalIndices = {
-    41, // Licença (2 mãos)
-    42, // Abraço (2 mãos)
-    43, // Por Favor (2 mãos)
-    // Revise seus sinais de duas mãos. Se "Conhecer" (40) usa 2 mãos, adicione aqui.
-    // Se "Joia" (35) usa 2 mãos, adicione aqui.
+    41, // Licença
+    42, // Abraço
+    43, // Por Favor
+    // Adicione outros se necessário (ex: Obrigado pode ser 2 mãos dependendo do treino)
   };
 
-  // Índices de sinais que DEVEM usar UMA MÃO
+  // Sinais que OBRIGATORIAMENTE usam 1 mão
+  // Todos os números, letras e saudações simples
   final Set<int> oneHandedSignalIndices = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, // Números e Ambíguos
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, // Números e Outros
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // Letras
     33, // Oi
-    34, // Olá/Tchau (depende da variação, mas geralmente é 1 mão)
+    34, // Olá/Tchau
     35, // Joia
-    36, // Desculpa (geralmente 1 mão)
-    37, // Saudade
-    38, // Obrigado
-    39, // Você
-    40, // Conhecer
-    // Revise seus sinais. Se "Joia" (35) for 1 mão, adicione aqui.
-    // Se "Olá/Tchau" (34) for 1 mão, adicione aqui.
+    36, // Desculpa (Geralmente 1 mão em Y no queixo)
+    37, // Saudade (Geralmente 1 mão em A girando no peito)
+    38, // Obrigado (Geralmente 1 mão na testa/peito ou 2 mãos. Ajuste conforme seu treino)
+    39, // Você (Apontar - 1 mão)
+    40, // Conhecer (1 mão no queixo)
   };
 
-  // Conjunto de índices que correspondem a letras (para lógica de contexto)
+  // Índices para lógica de contexto (Letras)
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
   };
-  // --- FIM DOS CONJUNTOS DE FILTROS ---
-
 
   Future<void> _loadModelFromBytes() async {
     try {
-      // --- NOVO NOME DO MODELO TFLITE (126 FLOATS) ---
       final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_porfavor.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
-        print('Erro: Modelo carregado como dados vazios.');
         setState(() { resultado = "Erro: Modelo vazio."; });
         return;
       }
       interpreter = Interpreter.fromBuffer(modelBytes);
       print('✅ Modelo TFLite (126 floats) carregado com sucesso.');
     } catch (e) {
-      print('❌ Falha ao carregar o modelo TFLite: $e');
-      setState(() { resultado = "Erro ao carregar o modelo de reconhecimento."; });
+      print('❌ Falha ao carregar: $e');
+      setState(() { resultado = "Erro ao carregar modelo."; });
     }
   }
 
   @override
   void initState() {
     super.initState();
-    
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    
     _loadModelFromBytes();
-    _controller = CameraController(
-      widget.camera,
-      ResolutionPreset.medium,
-      enableAudio: false,
-    );
+    _controller = CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
     _initializeControllerFuture = _controller.initialize().then((_) {
       if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
@@ -139,8 +121,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _startSendingPictures();
       setState(() {});
     }).catchError((e) {
-      print("Erro ao inicializar a câmera: $e");
-      setState(() { resultado = "Erro ao iniciar a câmera."; });
+      print("Erro câmera: $e");
     });
   }
 
@@ -155,14 +136,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
-      if (!_controller.value.isInitialized || _isSendingPicture) {
-        return;
-      }
+      if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
 
       try {
         final XFile imageFile = await _controller.takePicture();
-        
         final Uint8List originalImageBytes = await File(imageFile.path).readAsBytes();
         img.Image? originalImage = img.decodeImage(originalImageBytes);
         Uint8List finalImageBytes;
@@ -171,16 +149,15 @@ class _CameraScreenState extends State<CameraScreen> {
           img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
           finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 85));
         } else {
-          print("⚠️ Erro: Não foi possível decodificar imagem, enviando original.");
           finalImageBytes = originalImageBytes;
         }
 
-        final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
+        final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem'); // ATUALIZE SEU IP
         var request = http.MultipartRequest('POST', uri);
         request.files.add(http.MultipartFile.fromBytes(
           'imagem',
           finalImageBytes,
-          filename: 'camera_frame.jpg',
+          filename: 'frame.jpg',
           contentType: MediaType('image', 'jpeg'),
         ));
 
@@ -192,71 +169,53 @@ class _CameraScreenState extends State<CameraScreen> {
 
           if (jsonResponse['landmarks'] != null) {
             List<dynamic> rawLandmarks = jsonResponse['landmarks'];
-            
+            // Verifica se o servidor enviou o vetor correto
             if (rawLandmarks.length == 126) {
               var landmarks = Float32List.fromList(rawLandmarks.map((e) => e as double).toList());
               _runInference(landmarks);
-            } else {
-              print("Erro: O servidor não retornou 126 landmarks. Recebido: ${rawLandmarks.length}");
-              setState(() { resultado = "Erro de dados do servidor (landmarks)"; });
             }
-
           } else {
             if (mounted) {
               setState(() {
-                resultado = jsonResponse['mensagem'] ?? "Nenhuma mão detectada.";
+                resultado = "Nenhuma mão detectada";
                 _lastRecognizedIndex = null;
                 _predictionHistory.clear();
               });
             }
           }
-        } else {
-          if (mounted) {
-            setState(() { resultado = 'Erro do servidor: ${response.statusCode}'; });
-          }
         }
       } catch (e) {
-        if (mounted) {
-          setState(() {
-            resultado = 'Falha na comunicação ou processamento: $e';
-            print(e.runtimeType);
-          });
-        }
+        print('Erro: $e');
       } finally {
         _isSendingPicture = false;
       }
     });
   }
 
-  // --- NOVA FUNÇÃO: Verificador de Mãos ---
+  // Função auxiliar para contar mãos baseada nos dados zerados
   int _getDetectedHandCount(Float32List landmarks) {
-    // Verifica se a Mão Esquerda (primeira metade) tem dados
-    // Usamos um limiar pequeno (0.01) para evitar falsos positivos de ruído
-    double leftHandSum = landmarks.sublist(0, 63).fold(0.0, (prev, e) => prev + e.abs());
+    // Primeira metade (0-62) é mão esquerda
+    // Segunda metade (63-125) é mão direita
+    // Se a soma dos valores absolutos for muito próxima de zero, a mão não está lá.
     
-    // Verifica se a Mão Direita (segunda metade) tem dados
-    double rightHandSum = landmarks.sublist(63, 126).fold(0.0, (prev, e) => prev + e.abs());
+    double sumLeft = 0;
+    for(int i=0; i<63; i++) sumLeft += landmarks[i].abs();
+    
+    double sumRight = 0;
+    for(int i=63; i<126; i++) sumRight += landmarks[i].abs();
 
-    bool isLeftHandDetected = leftHandSum > 0.1;
-    bool isRightHandDetected = rightHandSum > 0.1;
-
-    if (isLeftHandDetected && isRightHandDetected) {
-      return 2;
-    } else if (isLeftHandDetected || isRightHandDetected) {
-      return 1;
-    } else {
-      return 0;
-    }
+    int count = 0;
+    if (sumLeft > 0.1) count++; // Limiar pequeno para evitar ruído de float
+    if (sumRight > 0.1) count++;
+    
+    return count;
   }
   
   void _runInference(Float32List landmarks) {
-    if (interpreter == null) {
-      setState(() { resultado = "Modelo não carregado."; });
-      return;
-    }
-    
+    if (interpreter == null) return;
+
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); // ATUALIZADO: 44 classes
+    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); // 44 classes
 
     try {
       interpreter!.run(input, output);
@@ -268,41 +227,37 @@ class _CameraScreenState extends State<CameraScreen> {
 
       if (confidence > 0.55) {
         
-        // --- NOVO: FILTRO DE CONTAGEM DE MÃOS ---
-        int detectedHandCount = _getDetectedHandCount(landmarks);
-        bool expectedTwoHands = twoHandedSignalIndices.contains(predictedIndex);
-        bool expectedOneHand = oneHandedSignalIndices.contains(predictedIndex);
+        // --- VALIDAÇÃO DE QUANTIDADE DE MÃOS ---
+        int handsDetected = _getDetectedHandCount(landmarks);
+        bool requiresTwoHands = twoHandedSignalIndices.contains(predictedIndex);
+        bool requiresOneHand = oneHandedSignalIndices.contains(predictedIndex);
 
-        // Se o modelo previu um sinal de DUAS MÃOS, mas só UMA foi detectada
-        if (expectedTwoHands && detectedHandCount == 1) {
+        if (requiresTwoHands && handsDetected < 2) {
+          // O modelo achou que é um sinal de 2 mãos, mas só tem 1 mão na tela.
           if (mounted) {
             setState(() {
-              resultado = "${classMapping[predictedIndex]} (Requer 2 Mãos)";
-              _lastRecognizedIndex = null;
-              _predictionHistory.clear();
+              resultado = "⚠️ Sinal requer 2 mãos";
+              // Não atualizamos o _lastRecognizedIndex para não quebrar contextos
             });
           }
-          return; // Interrompe a lógica
+          return; // NÃO MOSTRA A TRADUÇÃO
         }
-        
-        // Se o modelo previu um sinal de UMA MÃO, mas DUAS foram detectadas
-        if (expectedOneHand && detectedHandCount == 2) {
+
+        if (requiresOneHand && handsDetected > 1) {
+          // O modelo achou que é um sinal de 1 mão, mas tem 2 mãos na tela.
+          // Para evitar confusão, pedimos para usar 1 mão.
           if (mounted) {
             setState(() {
-              resultado = "${classMapping[predictedIndex]} (Requer 1 Mão)";
-              _lastRecognizedIndex = null;
-              _predictionHistory.clear();
+              resultado = "⚠️ Use apenas 1 mão para este sinal";
             });
           }
-          return; // Interrompe a lógica
+          return; // NÃO MOSTRA A TRADUÇÃO
         }
-        // --- FIM DO FILTRO ---
+        // --- FIM DA VALIDAÇÃO ---
 
 
         _predictionHistory.add(predictedIndex);
-        if (_predictionHistory.length > _historyLength) {
-          _predictionHistory.removeAt(0);
-        }
+        if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
         String finalResult;
         int finalIndex;
@@ -328,35 +283,36 @@ class _CameraScreenState extends State<CameraScreen> {
         }
         
         if (isDynamicH) {
-          finalResult = "Letra H (Sinal Dinâmico)";
+          finalResult = "Letra H";
           finalIndex = -1; 
           _predictionHistory.clear();
         } else if (isDynamicJ) {
-          finalResult = "Letra J (Sinal Dinâmico)";
+          finalResult = "Letra J";
           finalIndex = -2;
           _predictionHistory.clear();
         } 
-        
-        else if (predictedIndex == 0) { // Sinal Ambíguo 0/O
+        else if (predictedIndex == 0) { // 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResult = "Letra O (Contexto)";
+            finalResult = "Letra O";
             finalIndex = 0;
           } else {
-            finalResult = "Número 0 (Contexto)";
+            finalResult = "Número 0";
             finalIndex = 0;
           }
-        } else if (predictedIndex == 8) { // Sinal Ambíguo 8/S
+        } else if (predictedIndex == 8) { // 8/S
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResult = "Letra S (Contexto)";
+            finalResult = "Letra S";
             finalIndex = 8;
           } else {
-            finalResult = "Número 8 (Contexto)";
+            finalResult = "Número 8";
             finalIndex = 8;
           } 
         } 
         else {
-          // Previsão normal (passou no filtro de contagem de mãos)
-          finalResult = "${classMapping[predictedIndex]} (Conf: ${(confidence * 100).toStringAsFixed(2)}%)";
+          // Resultado Normal Validado
+          finalResult = classMapping[predictedIndex]!;
+          // Opcional: Mostrar confiança para debug
+          // finalResult += " (${(confidence * 100).toStringAsFixed(0)}%)";
           finalIndex = predictedIndex;
         }
 
@@ -369,27 +325,21 @@ class _CameraScreenState extends State<CameraScreen> {
       } else {
         if (mounted) {
           setState(() {
-            resultado = "Sinal não reconhecido (TFLite - Baixa Confiança)";
+            resultado = "..."; // Sinal fraco ou incerto
             _lastRecognizedIndex = null;
             _predictionHistory.clear();
           });
         }
       }
     } catch (e) {
-      print('Erro ao executar inferência com TFLite: $e');
-      if (mounted) {
-        setState(() {
-          resultado = "Erro na inferência do modelo.";
-        });
-      }
+      print('Erro TFLite: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
-    final screenHeight = screenSize.height; 
-    
+    final screenHeight = screenSize.height;
     final resultFontSize = screenHeight * 0.09;
     final containerHeight = screenHeight * 0.15;
     
