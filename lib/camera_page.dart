@@ -58,18 +58,11 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
   // --- LISTAS DE CONTROLE DE MÃOS ---
-  
-  // Sinais que OBRIGATORIAMENTE usam 2 mãos
-  // **REVISE E AJUSTE CONFORME SEU TREINAMENTO**
   final Set<int> twoHandedSignalIndices = {
     41, // Licença
     42, // Abraço
     43, // Por Favor
-    // Adicione outros se necessário (ex: Obrigado pode ser 2 mãos dependendo do treino)
   };
-
-  // Sinais que OBRIGATORIAMENTE usam 1 mão
-  // **REVISE E AJUSTE CONFORME SEU TREINAMENTO**
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, // Números e Outros
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // Letras
@@ -82,8 +75,6 @@ class _CameraScreenState extends State<CameraScreen> {
     39, // Você (Apontar - 1 mão)
     40, // Conhecer (1 mão no queixo)
   };
-
-  // Índices para lógica de contexto (Letras)
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
   };
@@ -109,7 +100,6 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     _loadModelFromBytes();
@@ -191,20 +181,14 @@ class _CameraScreenState extends State<CameraScreen> {
     });
   }
 
-  // Função auxiliar para contar mãos baseada nos dados zerados
   int _getDetectedHandCount(Float32List landmarks) {
-    // Verifica se a Mão Esquerda (primeira metade) tem dados
     double sumLeft = 0;
     for(int i=0; i<63; i++) sumLeft += landmarks[i].abs();
-    
-    // Verifica se a Mão Direita (segunda metade) tem dados
     double sumRight = 0;
     for(int i=63; i<126; i++) sumRight += landmarks[i].abs();
-
     int count = 0;
-    if (sumLeft > 0.1) count++; // Limiar pequeno para evitar ruído de float
+    if (sumLeft > 0.1) count++;
     if (sumRight > 0.1) count++;
-    
     return count;
   }
   
@@ -212,32 +196,27 @@ class _CameraScreenState extends State<CameraScreen> {
     if (interpreter == null) return;
 
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); // 44 classes
+    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0));
 
     try {
       interpreter!.run(input, output);
       var probabilities = output[0];
       
-      // --- NOVO: FILTRO DE PROBABILIDADES POR CONTAGEM DE MÃOS ---
       int handsDetected = _getDetectedHandCount(landmarks);
 
       if (handsDetected == 1) {
-        // Se detectou 1 mão, ZERA as probabilidades de sinais de 2 mãos
         for (int index in twoHandedSignalIndices) {
           probabilities[index] = 0.0;
         }
       } else if (handsDetected == 2) {
-        // Se detectou 2 mãos, ZERA as probabilidades de sinais de 1 mão
         for (int index in oneHandedSignalIndices) {
           probabilities[index] = 0.0;
         }
-      } else { // 0 mãos (embora o servidor já deva filtrar isso)
+      } else {
           if (mounted) setState(() { resultado = "..."; });
           return;
       }
-      // --- FIM DO FILTRO ---
 
-      // Encontra o vencedor NAS PROBABILIDADES FILTRADAS
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
@@ -246,10 +225,9 @@ class _CameraScreenState extends State<CameraScreen> {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
-        String finalResult;
+        String finalResultName; // Nome do sinal (ex: "Letra A")
         int finalIndex;
 
-        // Índices para lógica dinâmica e ambígua
         final int kIndex = 18;
         final int twoIndex = 2;
         final int iIndex = 20;
@@ -258,7 +236,6 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isDynamicH = false;
         bool isDynamicJ = false;
 
-        // Lógica Dinâmica (H e J)
         if (_predictionHistory.length >= 2) {
           if (_predictionHistory[_predictionHistory.length - 2] == kIndex &&
               _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
@@ -271,43 +248,40 @@ class _CameraScreenState extends State<CameraScreen> {
         }
         
         if (isDynamicH) {
-          finalResult = "Letra H (Sinal Dinâmico)";
+          finalResultName = "Letra H (Dinâmico)";
           finalIndex = -1; 
           _predictionHistory.clear();
         } else if (isDynamicJ) {
-          finalResult = "Letra J (Sinal Dinâmico)";
+          finalResultName = "Letra J (Dinâmico)";
           finalIndex = -2;
           _predictionHistory.clear();
         } 
-        // Lógica de Contexto (0/O e 8/S)
         else if (predictedIndex == 0) { // 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResult = "Letra O (Contexto)";
+            finalResultName = "Letra O (Contexto)";
             finalIndex = 0;
           } else {
-            finalResult = "Número 0 (Contexto)";
+            finalResultName = "Número 0 (Contexto)";
             finalIndex = 0;
           }
         } else if (predictedIndex == 8) { // 8/S
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResult = "Letra S (Contexto)";
+            finalResultName = "Letra S (Contexto)";
             finalIndex = 8;
           } else {
-            finalResult = "Número 8 (Contexto)";
+            finalResultName = "Número 8 (Contexto)";
             finalIndex = 8;
           } 
         } 
         else {
-          // Resultado Normal (Passou no filtro de mãos)
-          finalResult = classMapping[predictedIndex]!;
-          // Opcional: Mostrar confiança para debug
-          // finalResult += " (${(confidence * 100).toStringAsFixed(0)}%)";
+          finalResultName = classMapping[predictedIndex]!;
           finalIndex = predictedIndex;
         }
 
         if (mounted) {
           setState(() {
-            resultado = finalResult;
+            // --- ATUALIZAÇÃO: Adiciona a confiança à string final ---
+            resultado = "$finalResultName (${(confidence * 100).toStringAsFixed(0)}%)";
             _lastRecognizedIndex = finalIndex;
           });
         }
