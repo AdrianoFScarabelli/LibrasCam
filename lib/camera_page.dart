@@ -47,8 +47,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
     5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
-    10: "Outros Sinais", 
-    11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
+    10: "Outros Sinais", 11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
     15: "Letra E", 16: "Letra F", 17: "Letra G", 18: "Letra K", 19: "Letra J",
     20: "Letra I", 21: "Letra L", 22: "Letra M", 23: "Letra N", 24: "Letra P",
     25: "Letra Q", 26: "Letra R", 27: "Letra T", 28: "Letra U", 29: "Letra V",
@@ -61,7 +60,7 @@ class _CameraScreenState extends State<CameraScreen> {
   // --- LISTAS DE CONTROLE DE MÃOS ---
   
   // Sinais que OBRIGATORIAMENTE usam 2 mãos
-  // Ajuste conforme você treinou. Se "Obrigado" foi treinado com 1 mão, mova para a lista de baixo.
+  // **REVISE E AJUSTE CONFORME SEU TREINAMENTO**
   final Set<int> twoHandedSignalIndices = {
     41, // Licença
     42, // Abraço
@@ -70,7 +69,7 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
   // Sinais que OBRIGATORIAMENTE usam 1 mão
-  // Todos os números, letras e saudações simples
+  // **REVISE E AJUSTE CONFORME SEU TREINAMENTO**
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, // Números e Outros
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // Letras
@@ -88,6 +87,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
   };
+
 
   Future<void> _loadModelFromBytes() async {
     try {
@@ -152,7 +152,7 @@ class _CameraScreenState extends State<CameraScreen> {
           finalImageBytes = originalImageBytes;
         }
 
-        final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem'); // ATUALIZE SEU IP
+        final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
         var request = http.MultipartRequest('POST', uri);
         request.files.add(http.MultipartFile.fromBytes(
           'imagem',
@@ -169,7 +169,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
           if (jsonResponse['landmarks'] != null) {
             List<dynamic> rawLandmarks = jsonResponse['landmarks'];
-            // Verifica se o servidor enviou o vetor correto
             if (rawLandmarks.length == 126) {
               var landmarks = Float32List.fromList(rawLandmarks.map((e) => e as double).toList());
               _runInference(landmarks);
@@ -194,13 +193,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
   // Função auxiliar para contar mãos baseada nos dados zerados
   int _getDetectedHandCount(Float32List landmarks) {
-    // Primeira metade (0-62) é mão esquerda
-    // Segunda metade (63-125) é mão direita
-    // Se a soma dos valores absolutos for muito próxima de zero, a mão não está lá.
-    
+    // Verifica se a Mão Esquerda (primeira metade) tem dados
     double sumLeft = 0;
     for(int i=0; i<63; i++) sumLeft += landmarks[i].abs();
     
+    // Verifica se a Mão Direita (segunda metade) tem dados
     double sumRight = 0;
     for(int i=63; i<126; i++) sumRight += landmarks[i].abs();
 
@@ -219,43 +216,33 @@ class _CameraScreenState extends State<CameraScreen> {
 
     try {
       interpreter!.run(input, output);
-
       var probabilities = output[0];
+      
+      // --- NOVO: FILTRO DE PROBABILIDADES POR CONTAGEM DE MÃOS ---
+      int handsDetected = _getDetectedHandCount(landmarks);
+
+      if (handsDetected == 1) {
+        // Se detectou 1 mão, ZERA as probabilidades de sinais de 2 mãos
+        for (int index in twoHandedSignalIndices) {
+          probabilities[index] = 0.0;
+        }
+      } else if (handsDetected == 2) {
+        // Se detectou 2 mãos, ZERA as probabilidades de sinais de 1 mão
+        for (int index in oneHandedSignalIndices) {
+          probabilities[index] = 0.0;
+        }
+      } else { // 0 mãos (embora o servidor já deva filtrar isso)
+          if (mounted) setState(() { resultado = "..."; });
+          return;
+      }
+      // --- FIM DO FILTRO ---
+
+      // Encontra o vencedor NAS PROBABILIDADES FILTRADAS
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
 
       if (confidence > 0.55) {
-        
-        // --- VALIDAÇÃO DE QUANTIDADE DE MÃOS ---
-        int handsDetected = _getDetectedHandCount(landmarks);
-        bool requiresTwoHands = twoHandedSignalIndices.contains(predictedIndex);
-        bool requiresOneHand = oneHandedSignalIndices.contains(predictedIndex);
-
-        if (requiresTwoHands && handsDetected < 2) {
-          // O modelo achou que é um sinal de 2 mãos, mas só tem 1 mão na tela.
-          if (mounted) {
-            setState(() {
-              resultado = "⚠️ Sinal requer 2 mãos";
-              // Não atualizamos o _lastRecognizedIndex para não quebrar contextos
-            });
-          }
-          return; // NÃO MOSTRA A TRADUÇÃO
-        }
-
-        if (requiresOneHand && handsDetected > 1) {
-          // O modelo achou que é um sinal de 1 mão, mas tem 2 mãos na tela.
-          // Para evitar confusão, pedimos para usar 1 mão.
-          if (mounted) {
-            setState(() {
-              resultado = "⚠️ Use apenas 1 mão para este sinal";
-            });
-          }
-          return; // NÃO MOSTRA A TRADUÇÃO
-        }
-        // --- FIM DA VALIDAÇÃO ---
-
-
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
@@ -271,6 +258,7 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isDynamicH = false;
         bool isDynamicJ = false;
 
+        // Lógica Dinâmica (H e J)
         if (_predictionHistory.length >= 2) {
           if (_predictionHistory[_predictionHistory.length - 2] == kIndex &&
               _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
@@ -283,33 +271,34 @@ class _CameraScreenState extends State<CameraScreen> {
         }
         
         if (isDynamicH) {
-          finalResult = "Letra H";
+          finalResult = "Letra H (Sinal Dinâmico)";
           finalIndex = -1; 
           _predictionHistory.clear();
         } else if (isDynamicJ) {
-          finalResult = "Letra J";
+          finalResult = "Letra J (Sinal Dinâmico)";
           finalIndex = -2;
           _predictionHistory.clear();
         } 
+        // Lógica de Contexto (0/O e 8/S)
         else if (predictedIndex == 0) { // 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResult = "Letra O";
+            finalResult = "Letra O (Contexto)";
             finalIndex = 0;
           } else {
-            finalResult = "Número 0";
+            finalResult = "Número 0 (Contexto)";
             finalIndex = 0;
           }
         } else if (predictedIndex == 8) { // 8/S
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResult = "Letra S";
+            finalResult = "Letra S (Contexto)";
             finalIndex = 8;
           } else {
-            finalResult = "Número 8";
+            finalResult = "Número 8 (Contexto)";
             finalIndex = 8;
           } 
         } 
         else {
-          // Resultado Normal Validado
+          // Resultado Normal (Passou no filtro de mãos)
           finalResult = classMapping[predictedIndex]!;
           // Opcional: Mostrar confiança para debug
           // finalResult += " (${(confidence * 100).toStringAsFixed(0)}%)";
@@ -325,7 +314,7 @@ class _CameraScreenState extends State<CameraScreen> {
       } else {
         if (mounted) {
           setState(() {
-            resultado = "..."; // Sinal fraco ou incerto
+            resultado = "Sinal não reconhecido";
             _lastRecognizedIndex = null;
             _predictionHistory.clear();
           });
@@ -339,7 +328,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
-    final screenHeight = screenSize.height;
+    final screenHeight = screenSize.height; 
     final resultFontSize = screenHeight * 0.09;
     final containerHeight = screenHeight * 0.15;
     
