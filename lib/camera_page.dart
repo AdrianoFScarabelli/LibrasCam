@@ -100,7 +100,6 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     _loadModelFromBytes();
