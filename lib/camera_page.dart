@@ -57,23 +57,12 @@ class _CameraScreenState extends State<CameraScreen> {
     41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor"
   };
 
-  // --- LISTAS DE CONTROLE DE MÃOS ---
-  final Set<int> twoHandedSignalIndices = {
-    41, // Licença
-    42, // Abraço
-    43, // Por Favor
-  };
+  // --- LISTAS DE CONTROLE DE MÃOS (Fornecidas por você) ---
+  final Set<int> twoHandedSignalIndices = { 41, 42, 43, };
   final Set<int> oneHandedSignalIndices = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, // Números e Outros
-    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, // Letras
-    33, // Oi
-    34, // Olá/Tchau
-    35, // Joia
-    36, // Desculpa (Geralmente 1 mão em Y no queixo)
-    37, // Saudade (Geralmente 1 mão em A girando no peito)
-    38, // Obrigado (Geralmente 1 mão na testa/peito ou 2 mãos. Ajuste conforme seu treino)
-    39, // Você (Apontar - 1 mão)
-    40, // Conhecer (1 mão no queixo)
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+    33, 34, 35, 36, 37, 38, 39, 40,
   };
   final Set<int> letterIndices = {
     0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
@@ -99,6 +88,7 @@ class _CameraScreenState extends State<CameraScreen> {
   @override
   void initState() {
     super.initState();
+    // ATUALIZADO: Remove landscapeLeft, mantendo apenas landscapeRight
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeRight,
     ]);
@@ -125,7 +115,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _startSendingPictures() {
-    _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
+    // ATUALIZADO: Timer de volta para 1 segundo
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
 
@@ -196,7 +187,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (interpreter == null) return;
 
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0)); // 44 classes
+    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0));
 
     try {
       interpreter!.run(input, output);
@@ -223,7 +214,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
       if (confidence > 0.55) {
         
-        // Evita adicionar previsões repetidas ao histórico
         if (_predictionHistory.isEmpty || _predictionHistory.last != predictedIndex) {
           _predictionHistory.add(predictedIndex);
           if (_predictionHistory.length > _historyLength) {
@@ -234,39 +224,37 @@ class _CameraScreenState extends State<CameraScreen> {
         String finalResultName;
         int finalIndex;
 
-        // --- DEFINIÇÃO DE ÍNDICES DINÂMICOS E AMBÍGUOS ---
+        // Índices para lógica dinâmica e ambígua
         final int kIndex = 18;
         final int twoIndex = 2;
         final int iIndex = 20;
         final int jIndex = 19;
-        
-        // --- NOVO: Índices para "Tudo bem" ---
         final int bomIndex = 38; // Mapeado de "Obrigado"
         final int joiaIndex = 35; // Sinal Joia
-
+        final int dIndex = 14; // Letra D
+        final int tardeIndex = 40; // ATUALIZADO: Mapeado de "Conhecer"
+        
         bool isDynamicH = false;
         bool isDynamicJ = false;
-        bool isTudoBem = false; // Nova flag
+        bool isTudoBem = false;
+        bool isBomDia = false;
+        bool isBoaTarde = false;
 
-        // 1. Verifica o sinal dinâmico 'H' (K -> 2)
         if (_predictionHistory.length >= 2) {
-          if (_predictionHistory[_predictionHistory.length - 2] == kIndex &&
-              _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
-            isDynamicH = true;
-          }
-          // 2. Verifica o sinal dinâmico 'J' (I -> J)
-          if (_predictionHistory[_predictionHistory.length - 2] == iIndex &&
-              _predictionHistory[_predictionHistory.length - 1] == jIndex) { 
-            isDynamicJ = true;
-          }
-          // 3. Verifica o sinal dinâmico 'Tudo bem' (Bom/Obrigado -> Joia)
-          if (_predictionHistory[_predictionHistory.length - 2] == bomIndex &&
-              _predictionHistory[_predictionHistory.length - 1] == joiaIndex) {
-            isTudoBem = true;
+          int lastSignal = _predictionHistory[_predictionHistory.length - 2];
+          int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
+          if (lastSignal == kIndex && currentSignal == twoIndex) isDynamicH = true;
+          if (lastSignal == iIndex && currentSignal == jIndex) isDynamicJ = true;
+          if (lastSignal == bomIndex && currentSignal == joiaIndex) isTudoBem = true;
+          if (lastSignal == bomIndex && currentSignal == dIndex) isBomDia = true;
+          
+          // --- ATUALIZADO: Lógica para "Boa tarde" (Bom -> Tarde/Conhecer) ---
+          if (lastSignal == bomIndex && currentSignal == tardeIndex) {
+            isBoaTarde = true;
           }
         }
         
-        // --- LÓGICA DE DECISÃO ---
         if (isDynamicH) {
           finalResultName = "Letra H (Dinâmico)";
           finalIndex = -1; 
@@ -276,12 +264,19 @@ class _CameraScreenState extends State<CameraScreen> {
           finalIndex = -2;
           _predictionHistory.clear();
         } else if (isTudoBem) {
-          finalResultName = "Tudo bem?"; // Tradução da sequência
-          finalIndex = -3; // Índice customizado para "Tudo bem"
-          _predictionHistory.clear(); // Limpa após reconhecer a sequência
+          finalResultName = "Tudo bem?";
+          finalIndex = -3;
+          _predictionHistory.clear();
+        } else if (isBomDia) {
+          finalResultName = "Bom dia";
+          finalIndex = -4;
+          _predictionHistory.clear();
+        } else if (isBoaTarde) { // --- ATUALIZADO ---
+          finalResultName = "Boa tarde";
+          finalIndex = -5; // Novo índice customizado
+          _predictionHistory.clear();
         }
         
-        // --- LÓGICA DE CONTEXTO AMBÍGUO (Sinais estáticos) ---
         else if (predictedIndex == 0) { // 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResultName = "Letra O";
@@ -300,19 +295,19 @@ class _CameraScreenState extends State<CameraScreen> {
           } 
         } 
         else {
-          // Resultado Normal (Passou no filtro de mãos)
-          // Mapeia "Obrigado" (38) para "Bom"
+          // Mapeamento de nomes para sinais estáticos
           if (predictedIndex == bomIndex) {
-            finalResultName = "Bom (Obrigado)";
+            finalResultName = "Bom"; // (Obrigado)
+          } else if (predictedIndex == tardeIndex) { // --- ATUALIZADO ---
+            finalResultName = "Tarde"; // (Conhecer)
           } else {
-            finalResultName = classMapping[predictedIndex]!;
+            finalResultName = classMapping[predictedIndex] ?? "Desconhecido";
           }
           finalIndex = predictedIndex;
         }
 
         if (mounted) {
           setState(() {
-            // Mostra a confiança apenas para sinais estáticos (não dinâmicos ou de contexto)
             if (finalIndex >= 0 && predictedIndex == finalIndex) {
                resultado = "$finalResultName (${(confidence * 100).toStringAsFixed(0)}%)";
             } else {
