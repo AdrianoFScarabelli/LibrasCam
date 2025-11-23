@@ -54,24 +54,28 @@ class _CameraScreenState extends State<CameraScreen> {
     30: "Letra W", 31: "Letra X", 32: "Letra Y",
     33: "Sinal Oi", 34: "Sinal Olá/Tchau", 35: "Sinal Joia", 36: "Sinal Desculpa",
     37: "Sinal Saudade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
-    41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor"
+    41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor", 44: "Sinal Horas",
+    45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Morar", 48: "Sinal Onde",
+    49: "Sinal Até", 50: "Sinal Banheiro",
   };
 
   // --- LISTAS DE CONTROLE DE MÃOS (Fornecidas por você) ---
-  final Set<int> twoHandedSignalIndices = { 41, 42, 43, };
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
     33, 34, 35, 36, 37, 38, 39, 40,
   };
+  final Set<int> twoHandedSignalIndices = {
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+  };
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
   };
 
 
   Future<void> _loadModelFromBytes() async {
     try {
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_porfavor.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_banheiro.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         setState(() { resultado = "Erro: Modelo vazio."; });
@@ -185,7 +189,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (interpreter == null) return;
 
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(44, 0.0));
+    var output = List<List<double>>.filled(1, List<double>.filled(51, 0.0));
 
     try {
       interpreter!.run(input, output);

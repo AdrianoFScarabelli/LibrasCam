@@ -75,7 +75,7 @@ flutter:
     - assets/images/homem.png
     - assets/images/seta.png
     - assets/images/camera.png
-    - assets/libras_landmarks_126_ate_porfavor.tflite
+    - assets/libras_landmarks_126_ate_banheiro.tflite
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
