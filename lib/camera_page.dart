@@ -222,7 +222,6 @@ class _CameraScreenState extends State<CameraScreen> {
       }
       // --- FIM DA LÓGICA DE SUBSTITUIÇÃO ---
 
-
       if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
@@ -236,17 +235,23 @@ class _CameraScreenState extends State<CameraScreen> {
         final int iIndex = 20;
         final int jIndex = 19;
         
-        // Lógica para "Tudo bem" e "Bom dia"
-        final int bomIndex = 38; // Obrigado/Bom
+        final int bomIndex = 38; 
         final int joiaIndex = 35; 
-        final int dIndex = 14; // Letra D
-        final int conhecerIndex = 40; // Conhecer/Tarde
-
+        final int dIndex = 14; 
+        final int conhecerIndex = 40; 
+        final int noiteIndex = 46; 
+        
+        // --- NOVOS ÍNDICES PARA NOVAS LÓGICAS ---
+        final int uIndex = 28; // Letra U
+        
         bool isDynamicH = false;
         bool isDynamicJ = false;
         bool isTudoBem = false;
         bool isBomDia = false;
         bool isBoaTarde = false;
+        bool isBoaNoite = false;
+        bool isQualSeuNome = false; // NOVO
+        bool isMeuNomeE = false;    // NOVO
 
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
@@ -254,32 +259,46 @@ class _CameraScreenState extends State<CameraScreen> {
 
           if (lastSignal == kIndex && currentSignal == twoIndex) isDynamicH = true;
           if (lastSignal == iIndex && currentSignal == jIndex) isDynamicJ = true;
-          
           if (lastSignal == bomIndex && currentSignal == joiaIndex) isTudoBem = true;
           if (lastSignal == bomIndex && currentSignal == dIndex) isBomDia = true;
           if (lastSignal == bomIndex && currentSignal == conhecerIndex) isBoaTarde = true;
+          if (lastSignal == bomIndex && currentSignal == noiteIndex) isBoaNoite = true;
+          
+          // --- NOVA LÓGICA: "Qual é o seu nome?" (U + U) ---
+          if (lastSignal == uIndex && currentSignal == uIndex) {
+            isQualSeuNome = true;
+          }
+          
+          // --- NOVA LÓGICA: "O meu nome é" (2 + 2) ---
+          if (lastSignal == twoIndex && currentSignal == twoIndex) {
+            isMeuNomeE = true;
+          }
         }
         
         if (isDynamicH) {
           finalResultName = "Letra H (Dinâmico)";
-          finalIndex = -1; 
-          _predictionHistory.clear();
+          finalIndex = -1; _predictionHistory.clear();
         } else if (isDynamicJ) {
           finalResultName = "Letra J (Dinâmico)";
-          finalIndex = -2;
-          _predictionHistory.clear();
+          finalIndex = -2; _predictionHistory.clear();
         } else if (isTudoBem) {
           finalResultName = "Tudo bem?";
-          finalIndex = -3;
-          _predictionHistory.clear();
+          finalIndex = -3; _predictionHistory.clear();
         } else if (isBomDia) {
           finalResultName = "Bom dia";
-          finalIndex = -4;
-          _predictionHistory.clear();
+          finalIndex = -4; _predictionHistory.clear();
         } else if (isBoaTarde) {
           finalResultName = "Boa tarde";
-          finalIndex = -5; 
-          _predictionHistory.clear();
+          finalIndex = -5; _predictionHistory.clear();
+        } else if (isBoaNoite) {
+          finalResultName = "Boa noite";
+          finalIndex = -6; _predictionHistory.clear();
+        } else if (isQualSeuNome) { // --- NOVO RESULTADO ---
+          finalResultName = "Qual é o seu nome?";
+          finalIndex = -7; _predictionHistory.clear();
+        } else if (isMeuNomeE) { // --- NOVO RESULTADO ---
+          finalResultName = "O meu nome é...";
+          finalIndex = -8; _predictionHistory.clear();
         }
         
         else if (predictedIndex == 0) { // 0/O
