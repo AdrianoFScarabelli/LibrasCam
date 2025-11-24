@@ -43,7 +43,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
 
-  // --- MAPeamento de rótulos (44 CLASSES: 0 a 43) ---
+  // --- MAPeamento de rótulos (51 CLASSES: 0 a 50) ---
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
     5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
@@ -54,24 +54,25 @@ class _CameraScreenState extends State<CameraScreen> {
     30: "Letra W", 31: "Letra X", 32: "Letra Y",
     33: "Sinal Oi", 34: "Sinal Olá/Tchau", 35: "Sinal Joia", 36: "Sinal Desculpa",
     37: "Sinal Saudade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
-    41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor", 44: "Sinal Horas",
-    45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Morar", 48: "Sinal Onde",
-    49: "Sinal Até", 50: "Sinal Banheiro",
+    41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor",
+    44: "Sinal Horas", 45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Morar",
+    48: "Sinal Onde", 49: "Sinal Até", 50: "Sinal Banheiro"
   };
 
-  // --- LISTAS DE CONTROLE DE MÃOS (Fornecidas por você) ---
+  // --- LISTAS DE CONTROLE DE MÃOS ---
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
     33, 34, 35, 36, 37, 38, 39, 40,
   };
+  
   final Set<int> twoHandedSignalIndices = {
     41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
   };
-  final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-  };
 
+  final Set<int> letterIndices = {
+    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+  };
 
   Future<void> _loadModelFromBytes() async {
     try {
@@ -93,6 +94,7 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     _loadModelFromBytes();
@@ -118,7 +120,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _startSendingPictures() {
-    _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
+    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
 
@@ -189,7 +191,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (interpreter == null) return;
 
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(51, 0.0));
+    var output = List<List<double>>.filled(1, List<double>.filled(51, 0.0)); // 51 classes
 
     try {
       interpreter!.run(input, output);
@@ -203,58 +205,85 @@ class _CameraScreenState extends State<CameraScreen> {
       // --- PASSO 2: Contar as mãos detectadas ---
       int handsDetected = _getDetectedHandCount(landmarks);
 
-      // --- PASSO 3: LÓGICA DE SUBSTITUIÇÃO (O que você pediu) ---
-      // Índices para os sinais ambíguos de UMA/DUAS mãos
+      // --- PASSO 3: FILTRO DE MÃOS ---
+      if (handsDetected == 1) {
+        for (int index in twoHandedSignalIndices) {
+          probabilities[index] = 0.0;
+        }
+      } else if (handsDetected == 2) {
+        for (int index in oneHandedSignalIndices) {
+          probabilities[index] = 0.0;
+        }
+      } else {
+          if (mounted) setState(() { resultado = "..."; });
+          return;
+      }
+      
+      // Recalcular o vencedor após o filtro
+      predictedIndex = probabilities.indexOf(
+          probabilities.reduce((curr, next) => curr > next ? curr : next));
+      confidence = probabilities[predictedIndex];
+
+      // --- PASSO 4: LÓGICA DE SUBSTITUIÇÃO (Abraço/Saudade) ---
       final int saudadeIndex = 37;
       final int abracoIndex = 42;
-      // (Adicione outros pares aqui, ex: "Obrigado" (38) se for 1 mão vs 2 mãos)
       
       if (predictedIndex == abracoIndex && handsDetected == 1) {
-          // O modelo previu "Abraço", mas só 1 mão foi detectada.
-          // CORRIGIR a previsão para "Saudade".
           predictedIndex = saudadeIndex;
-          confidence = probabilities[saudadeIndex]; // Pega a confiança real do sinal "Saudade"
-          print("CORREÇÃO: 'Abraço' (42) com 1 mão -> 'Saudade' (37)");
+          confidence = probabilities[saudadeIndex]; 
       }
-      // Você pode adicionar a lógica inversa também:
       else if (predictedIndex == saudadeIndex && handsDetected == 2) {
-          // O modelo previu "Saudade", mas 2 mãos foram detectadas.
-          // CORRIGIR a previsão para "Abraço".
           predictedIndex = abracoIndex;
-          confidence = probabilities[abracoIndex]; // Pega a confiança real do "Abraço"
-          print("CORREÇÃO: 'Saudade' (37) com 2 mãos -> 'Abraço' (42)");
+          confidence = probabilities[abracoIndex]; 
       }
-      // --- FIM DA LÓGICA DE SUBSTITUIÇÃO ---
 
 
-      if (confidence > 0.55) { // Confere a confiança APÓS a correção
+      if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
         String finalResultName;
         int finalIndex;
 
-        // Índices para lógica dinâmica e ambígua
+        // Índices para lógica dinâmica
         final int kIndex = 18;
         final int twoIndex = 2;
         final int iIndex = 20;
         final int jIndex = 19;
         
+        // Índices para Saudações Compostas
+        final int bomIndex = 38; // Obrigado/Bom
+        final int joiaIndex = 35; 
+        final int dIndex = 14; 
+        final int conhecerIndex = 40; // Tarde/Conhecer
+        final int noiteIndex = 46; // NOVO: Noite
+        
         bool isDynamicH = false;
         bool isDynamicJ = false;
+        bool isTudoBem = false;
+        bool isBomDia = false;
+        bool isBoaTarde = false;
+        bool isBoaNoite = false; // NOVO
 
-        // Lógica Dinâmica (H e J)
         if (_predictionHistory.length >= 2) {
-          if (_predictionHistory[_predictionHistory.length - 2] == kIndex &&
-              _predictionHistory[_predictionHistory.length - 1] == twoIndex) {
-            isDynamicH = true;
-          }
-          if (_predictionHistory[_predictionHistory.length - 2] == iIndex &&
-              _predictionHistory[_predictionHistory.length - 1] == jIndex) { 
-            isDynamicJ = true;
+          int lastSignal = _predictionHistory[_predictionHistory.length - 2];
+          int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
+          if (lastSignal == kIndex && currentSignal == twoIndex) isDynamicH = true;
+          if (lastSignal == iIndex && currentSignal == jIndex) isDynamicJ = true;
+          
+          // Saudações
+          if (lastSignal == bomIndex && currentSignal == joiaIndex) isTudoBem = true;
+          if (lastSignal == bomIndex && currentSignal == dIndex) isBomDia = true;
+          if (lastSignal == bomIndex && currentSignal == conhecerIndex) isBoaTarde = true;
+          
+          // --- NOVO: Lógica para "Boa noite" (Bom -> Noite) ---
+          if (lastSignal == bomIndex && currentSignal == noiteIndex) {
+            isBoaNoite = true;
           }
         }
         
+        // Prioridade das decisões
         if (isDynamicH) {
           finalResultName = "Letra H (Dinâmico)";
           finalIndex = -1; 
@@ -263,9 +292,24 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "Letra J (Dinâmico)";
           finalIndex = -2;
           _predictionHistory.clear();
-        } 
+        } else if (isTudoBem) {
+          finalResultName = "Tudo bem?";
+          finalIndex = -3;
+          _predictionHistory.clear();
+        } else if (isBomDia) {
+          finalResultName = "Bom dia";
+          finalIndex = -4;
+          _predictionHistory.clear();
+        } else if (isBoaTarde) {
+          finalResultName = "Boa tarde";
+          finalIndex = -5; 
+          _predictionHistory.clear();
+        } else if (isBoaNoite) { // --- NOVO ---
+          finalResultName = "Boa noite";
+          finalIndex = -6;
+          _predictionHistory.clear();
+        }
         
-        // Lógica de Contexto (0/O e 8/S)
         else if (predictedIndex == 0) { // 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResultName = "Letra O";
@@ -284,15 +328,24 @@ class _CameraScreenState extends State<CameraScreen> {
           } 
         } 
         else {
-          // Resultado Normal (Já foi corrigido/validado pela contagem de mãos)
-          finalResultName = classMapping[predictedIndex]!;
+          // Mapeamento de nomes para sinais estáticos com múltiplos significados
+          if (predictedIndex == bomIndex) {
+            finalResultName = "Bom"; 
+          } else if (predictedIndex == conhecerIndex) {
+            finalResultName = "Conhecer/Tarde";
+          } else {
+            finalResultName = classMapping[predictedIndex] ?? "Desconhecido";
+          }
           finalIndex = predictedIndex;
         }
 
         if (mounted) {
           setState(() {
-            // Re-adicionando a confiança à string final
-            resultado = "$finalResultName (${(confidence * 100).toStringAsFixed(0)}%)";
+            if (finalIndex >= 0 && predictedIndex == finalIndex) {
+               resultado = "$finalResultName (${(confidence * 100).toStringAsFixed(0)}%)";
+            } else {
+               resultado = finalResultName;
+            }
             _lastRecognizedIndex = finalIndex;
           });
         }
