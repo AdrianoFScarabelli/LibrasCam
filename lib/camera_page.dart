@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Para SystemChrome e rootBundle
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -8,7 +8,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http_parser/http_parser.dart';
-import 'package:image/image.dart' as img; // Para redimensionamento
+import 'package:image/image.dart' as img;
 
 // Extensão para reshape
 extension on List<double> {
@@ -60,12 +60,13 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
   // --- LISTAS DE CONTROLE DE MÃOS ---
+  // Ajuste conforme o seu treinamento.
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
     33, 34, 35, 36, 37, 38, 39, 40,
   };
-  
+
   final Set<int> twoHandedSignalIndices = {
     41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
   };
@@ -205,37 +206,21 @@ class _CameraScreenState extends State<CameraScreen> {
       // --- PASSO 2: Contar as mãos detectadas ---
       int handsDetected = _getDetectedHandCount(landmarks);
 
-      // --- PASSO 3: FILTRO DE MÃOS ---
-      if (handsDetected == 1) {
-        for (int index in twoHandedSignalIndices) {
-          probabilities[index] = 0.0;
-        }
-      } else if (handsDetected == 2) {
-        for (int index in oneHandedSignalIndices) {
-          probabilities[index] = 0.0;
-        }
-      } else {
-          if (mounted) setState(() { resultado = "..."; });
-          return;
-      }
-      
-      // Recalcular o vencedor após o filtro
-      predictedIndex = probabilities.indexOf(
-          probabilities.reduce((curr, next) => curr > next ? curr : next));
-      confidence = probabilities[predictedIndex];
-
-      // --- PASSO 4: LÓGICA DE SUBSTITUIÇÃO (Abraço/Saudade) ---
+      // --- PASSO 3: LÓGICA DE SUBSTITUIÇÃO (O que você pediu) ---
       final int saudadeIndex = 37;
       final int abracoIndex = 42;
       
       if (predictedIndex == abracoIndex && handsDetected == 1) {
           predictedIndex = saudadeIndex;
           confidence = probabilities[saudadeIndex]; 
+          // print("CORREÇÃO: 'Abraço' (42) com 1 mão -> 'Saudade' (37)");
       }
       else if (predictedIndex == saudadeIndex && handsDetected == 2) {
           predictedIndex = abracoIndex;
           confidence = probabilities[abracoIndex]; 
+          // print("CORREÇÃO: 'Saudade' (37) com 2 mãos -> 'Abraço' (42)");
       }
+      // --- FIM DA LÓGICA DE SUBSTITUIÇÃO ---
 
 
       if (confidence > 0.55) {
@@ -245,25 +230,23 @@ class _CameraScreenState extends State<CameraScreen> {
         String finalResultName;
         int finalIndex;
 
-        // Índices para lógica dinâmica
+        // Índices para lógica dinâmica e ambígua
         final int kIndex = 18;
         final int twoIndex = 2;
         final int iIndex = 20;
         final int jIndex = 19;
         
-        // Índices para Saudações Compostas
+        // Lógica para "Tudo bem" e "Bom dia"
         final int bomIndex = 38; // Obrigado/Bom
         final int joiaIndex = 35; 
-        final int dIndex = 14; 
-        final int conhecerIndex = 40; // Tarde/Conhecer
-        final int noiteIndex = 46; // NOVO: Noite
-        
+        final int dIndex = 14; // Letra D
+        final int conhecerIndex = 40; // Conhecer/Tarde
+
         bool isDynamicH = false;
         bool isDynamicJ = false;
         bool isTudoBem = false;
         bool isBomDia = false;
         bool isBoaTarde = false;
-        bool isBoaNoite = false; // NOVO
 
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
@@ -272,18 +255,11 @@ class _CameraScreenState extends State<CameraScreen> {
           if (lastSignal == kIndex && currentSignal == twoIndex) isDynamicH = true;
           if (lastSignal == iIndex && currentSignal == jIndex) isDynamicJ = true;
           
-          // Saudações
           if (lastSignal == bomIndex && currentSignal == joiaIndex) isTudoBem = true;
           if (lastSignal == bomIndex && currentSignal == dIndex) isBomDia = true;
           if (lastSignal == bomIndex && currentSignal == conhecerIndex) isBoaTarde = true;
-          
-          // --- NOVO: Lógica para "Boa noite" (Bom -> Noite) ---
-          if (lastSignal == bomIndex && currentSignal == noiteIndex) {
-            isBoaNoite = true;
-          }
         }
         
-        // Prioridade das decisões
         if (isDynamicH) {
           finalResultName = "Letra H (Dinâmico)";
           finalIndex = -1; 
@@ -304,35 +280,31 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "Boa tarde";
           finalIndex = -5; 
           _predictionHistory.clear();
-        } else if (isBoaNoite) { // --- NOVO ---
-          finalResultName = "Boa noite";
-          finalIndex = -6;
-          _predictionHistory.clear();
         }
         
         else if (predictedIndex == 0) { // 0/O
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResultName = "Letra O";
+            finalResultName = "Letra O (Contexto)";
             finalIndex = 0;
           } else {
-            finalResultName = "Número 0";
+            finalResultName = "Número 0 (Contexto)";
             finalIndex = 0;
           }
         } else if (predictedIndex == 8) { // 8/S
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
-            finalResultName = "Letra S";
+            finalResultName = "Letra S (Contexto)";
             finalIndex = 8;
           } else {
-            finalResultName = "Número 8";
+            finalResultName = "Número 8 (Contexto)";
             finalIndex = 8;
           } 
         } 
         else {
-          // Mapeamento de nomes para sinais estáticos com múltiplos significados
+          // Mapeamento de nomes para sinais estáticos com duplo sentido
           if (predictedIndex == bomIndex) {
-            finalResultName = "Bom"; 
+            finalResultName = "Bom/Obrigado"; 
           } else if (predictedIndex == conhecerIndex) {
-            finalResultName = "Conhecer/Tarde";
+            finalResultName = "Conhecer/Tarde"; 
           } else {
             finalResultName = classMapping[predictedIndex] ?? "Desconhecido";
           }

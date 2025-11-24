@@ -8,8 +8,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp, // Permite apenas a orientação retrato "para cima"
-    // DeviceOrientation.portraitDown, // Opcional: se quiser permitir retrato de cabeça para baixo
+    DeviceOrientation.portraitUp,
   ]);
 
   final cameras = await availableCameras();
