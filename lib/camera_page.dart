@@ -77,7 +77,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _loadModelFromBytes() async {
     try {
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_banheiro.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_atualizado.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         setState(() { resultado = "Erro: Modelo vazio."; });
@@ -95,7 +95,6 @@ class _CameraScreenState extends State<CameraScreen> {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
     _loadModelFromBytes();
@@ -121,7 +120,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   void _startSendingPictures() {
-    _timer = Timer.periodic(const Duration(milliseconds: 500), (timer) async {
+    _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
 
