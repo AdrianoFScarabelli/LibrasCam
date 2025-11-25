@@ -146,7 +146,14 @@ class _CameraScreenState extends State<CameraScreen> {
           contentType: MediaType('image', 'jpeg'),
         ));
 
+        // --- INÍCIO DA MEDIÇÃO ---
+        final stopwatch = Stopwatch()..start(); // Inicia o cronômetro
+        
         var response = await request.send();
+        
+        stopwatch.stop(); // Para o cronômetro
+        print('⏱️ Tempo Total (Round Trip): ${stopwatch.elapsedMilliseconds} ms');
+        // --- FIM DA MEDIÇÃO ---
 
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
@@ -197,6 +204,13 @@ class _CameraScreenState extends State<CameraScreen> {
       interpreter!.run(input, output);
       var probabilities = output[0];
       
+      // --- 🔴 BLOQUEIO TEMPORÁRIO PARA TESTE 🔴 ---
+      // Zera a chance do sinal "Conhecer" (Índice 40)
+      // Isso impede que ele seja escolhido, permitindo testar se o modelo
+      // reconhece "Morar" ou outros sinais sem essa interferência.
+      probabilities[40] = 0.0; 
+      // ---------------------------------------------
+
       // --- PASSO 1: Obter a previsão inicial do modelo ---
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
