@@ -52,7 +52,7 @@ class _CameraScreenState extends State<CameraScreen> {
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
     5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
-    10: "Outros Sinais", 11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
+    10: "Te Amo", 11: "Letra A", 12: "Letra B", 13: "Letra C", 14: "Letra D",
     15: "Letra E", 16: "Letra F", 17: "Letra G", 18: "Letra K", 19: "Letra J",
     20: "Letra I", 21: "Letra L", 22: "Letra M", 23: "Letra N", 24: "Letra P",
     25: "Letra Q", 26: "Letra R", 27: "Letra T", 28: "Letra U", 29: "Letra V",
@@ -60,7 +60,7 @@ class _CameraScreenState extends State<CameraScreen> {
     33: "Sinal Oi", 34: "Sinal Olá/Tchau", 35: "Sinal Joia", 36: "Sinal Desculpa",
     37: "Sinal Saudade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
     41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor",
-    44: "Sinal Horas", 45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Morar",
+    44: "Sinal Horas", 45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Virgula",
     48: "Sinal Onde", 49: "Sinal Até", 50: "Sinal Banheiro"
   };
 
@@ -69,11 +69,11 @@ class _CameraScreenState extends State<CameraScreen> {
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-    33, 34, 35, 36, 37, 38, 39, 40,
+    33, 34, 35, 36, 37, 38, 39, 40, 47
   };
 
   final Set<int> twoHandedSignalIndices = {
-    41, 42, 43, 44, 45, 46, 47, 48, 49, 50,
+    41, 42, 43, 44, 45, 46, 48, 49, 50,
   };
 
   final Set<int> letterIndices = {
@@ -82,7 +82,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _loadModelFromBytes() async {
     try {
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_atualizado.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_virgula.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         setState(() { resultado = "Erro: Modelo vazio."; });
@@ -223,7 +223,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // Zera a chance do sinal "Conhecer" (Índice 40)
       // Isso impede que ele seja escolhido, permitindo testar se o modelo
       // reconhece "Morar" ou outros sinais sem essa interferência.
-      probabilities[40] = 0.0; 
+      //probabilities[40] = 0.0; 
       // ---------------------------------------------
 
       // --- PASSO 1: Obter a previsão inicial do modelo ---
