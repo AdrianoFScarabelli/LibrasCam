@@ -43,6 +43,11 @@ class _CameraScreenState extends State<CameraScreen> {
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
 
+  // --- Variáveis de Zoom ---
+  double _minAvailableZoom = 1.0;
+  double _maxAvailableZoom = 1.0;
+  double _currentZoomLevel = 1.0;
+
   // --- MAPeamento de rótulos (51 CLASSES: 0 a 50) ---
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
@@ -99,10 +104,20 @@ class _CameraScreenState extends State<CameraScreen> {
     ]);
     _loadModelFromBytes();
     _controller = CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
-    _initializeControllerFuture = _controller.initialize().then((_) {
+    _initializeControllerFuture = _controller.initialize().then((_) async {
       if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
       _controller.setFlashMode(FlashMode.off);
+
+      // --- Configuração do Zoom ---
+      _maxAvailableZoom = await _controller.getMaxZoomLevel();
+      _minAvailableZoom = await _controller.getMinZoomLevel();
+      
+      // Define um zoom inicial (ex: 1.0x = sem zoom, 1.5x = leve aproximação)
+      // Se estiver a 1 metro, talvez começar com 1.5x ajude.
+      _currentZoomLevel = 1.0; 
+      await _controller.setZoomLevel(_currentZoomLevel);
+
       _startSendingPictures();
       setState(() {});
     }).catchError((e) {
@@ -384,6 +399,29 @@ class _CameraScreenState extends State<CameraScreen> {
                 Positioned.fill(
                   child: CameraPreview(_controller),
                 ),
+                // --- SLIDER DE ZOOM ---
+                Positioned(
+                  right: 10,
+                  top: 50,
+                  bottom: 100,
+                  child: RotatedBox(
+                    quarterTurns: 3, // Slider vertical
+                    child: Slider(
+                      value: _currentZoomLevel,
+                      min: _minAvailableZoom,
+                      max: _maxAvailableZoom,
+                      activeColor: Colors.white,
+                      inactiveColor: Colors.white30,
+                      onChanged: (value) async {
+                        setState(() {
+                          _currentZoomLevel = value;
+                        });
+                        await _controller.setZoomLevel(value);
+                      },
+                    ),
+                  ),
+                ),
+                // --- TEXTO DE RESULTADO ---
                 Positioned(
                   bottom: 0,
                   left: 0,
