@@ -58,7 +58,7 @@ class _CameraScreenState extends State<CameraScreen> {
     25: "Letra Q", 26: "Letra R", 27: "Letra T", 28: "Letra U", 29: "Letra V",
     30: "Letra W", 31: "Letra X", 32: "Letra Y",
     33: "Sinal Oi", 34: "Sinal Olá/Tchau", 35: "Sinal Joia", 36: "Sinal Desculpa",
-    37: "Sinal Saudade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
+    37: "Sinal Idade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
     41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor",
     44: "Sinal Horas", 45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Virgula",
     48: "Sinal Onde", 49: "Sinal Até", 50: "Sinal Banheiro"
@@ -83,7 +83,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _loadModelFromBytes() async {
     try {
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_virgula.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_idade.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         setState(() { resultado = "Erro: Modelo vazio."; });
@@ -226,9 +226,6 @@ class _CameraScreenState extends State<CameraScreen> {
       // reconhece "Morar" ou outros sinais sem essa interferência.
       //probabilities[40] = 0.0; 
       // ---------------------------------------------
-
-      // --- 🔴 BLOQUEIO TEMPORÁRIO DO SAUDADE 🔴 ---
-      probabilities[37] = 0.0;
 
       int handsDetected = _getDetectedHandCount(landmarks);
 
