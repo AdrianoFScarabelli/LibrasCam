@@ -77,7 +77,8 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
   final Set<int> letterIndices = {
-    0, 8, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+    42, 43, 44, 45, 46, 47, 48, 49, 50
   };
 
   Future<void> _loadModelFromBytes() async {
@@ -115,7 +116,7 @@ class _CameraScreenState extends State<CameraScreen> {
       
       // Define um zoom inicial (ex: 1.0x = sem zoom, 1.5x = leve aproximação)
       // Se estiver a 1 metro, talvez começar com 1.5x ajude.
-      _currentZoomLevel = 1.0; 
+      _currentZoomLevel = 1.8; 
       await _controller.setZoomLevel(_currentZoomLevel);
 
       _startSendingPictures();
@@ -226,29 +227,31 @@ class _CameraScreenState extends State<CameraScreen> {
       //probabilities[40] = 0.0; 
       // ---------------------------------------------
 
-      // --- PASSO 1: Obter a previsão inicial do modelo ---
+      // --- 🔴 BLOQUEIO TEMPORÁRIO DO SAUDADE 🔴 ---
+      probabilities[37] = 0.0;
+
+      int handsDetected = _getDetectedHandCount(landmarks);
+
+      // Filtro de mãos
+      if (handsDetected == 1) {
+        for (int index in twoHandedSignalIndices) probabilities[index] = 0.0;
+      } else if (handsDetected == 2) {
+        for (int index in oneHandedSignalIndices) probabilities[index] = 0.0;
+      } else {
+          return; // 0 mãos
+      }
+      
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
 
-      // --- PASSO 2: Contar as mãos detectadas ---
-      int handsDetected = _getDetectedHandCount(landmarks);
-
-      // --- PASSO 3: LÓGICA DE SUBSTITUIÇÃO (O que você pediu) ---
-      final int saudadeIndex = 37;
-      final int abracoIndex = 42;
-      
-      if (predictedIndex == abracoIndex && handsDetected == 1) {
-          predictedIndex = saudadeIndex;
-          confidence = probabilities[saudadeIndex]; 
-          // print("CORREÇÃO: 'Abraço' (42) com 1 mão -> 'Saudade' (37)");
+      // Lógica de Substituição
+      final int conhecerIndex = 40; final int porfavorIndex = 43;
+      if (predictedIndex == porfavorIndex && handsDetected == 1) {
+          predictedIndex = conhecerIndex; confidence = probabilities[conhecerIndex]; 
+      } else if (predictedIndex == conhecerIndex && handsDetected == 2) {
+          predictedIndex = porfavorIndex; confidence = probabilities[porfavorIndex]; 
       }
-      else if (predictedIndex == saudadeIndex && handsDetected == 2) {
-          predictedIndex = abracoIndex;
-          confidence = probabilities[abracoIndex]; 
-          // print("CORREÇÃO: 'Saudade' (37) com 2 mãos -> 'Abraço' (42)");
-      }
-      // --- FIM DA LÓGICA DE SUBSTITUIÇÃO ---
 
       if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
