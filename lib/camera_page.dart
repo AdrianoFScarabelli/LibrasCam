@@ -310,7 +310,7 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "Letra J (Dinâmico)";
           finalIndex = -2; _predictionHistory.clear();
         } else if (isTudoBem) {
-          finalResultName = "Tudo bem?";
+          finalResultName = "Tudo bem";
           finalIndex = -3; _predictionHistory.clear();
         } else if (isBomDia) {
           finalResultName = "Bom dia";
@@ -322,10 +322,10 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "Boa noite";
           finalIndex = -6; _predictionHistory.clear();
         } else if (isQualSeuNome) { // --- NOVO RESULTADO ---
-          finalResultName = "Qual é o seu nome?";
+          finalResultName = "Qual é o seu nome";
           finalIndex = -7; _predictionHistory.clear();
         } else if (isMeuNomeE) { // --- NOVO RESULTADO ---
-          finalResultName = "O meu nome é...";
+          finalResultName = "O meu nome é ";
           finalIndex = -8; _predictionHistory.clear();
         }
         
