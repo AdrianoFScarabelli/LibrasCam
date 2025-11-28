@@ -103,8 +103,8 @@ class _CameraScreenState extends State<CameraScreen> {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeRight,
     ]);
-    _loadModelFromBytes();
-    _controller = CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
+    _loadModelFromBytes();                       //antes estava medium
+    _controller = CameraController(widget.camera, ResolutionPreset.low, enableAudio: false);
     _initializeControllerFuture = _controller.initialize().then((_) async {
       if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
@@ -148,7 +148,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
         if (originalImage != null) {
           img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
-          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 85));
+          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75)); //antes estava 85
         } else {
           finalImageBytes = originalImageBytes;
         }
