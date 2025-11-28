@@ -59,7 +59,6 @@ class _CameraScreenState extends State<CameraScreen> {
   String? _pendingSignalName;
   int _zConsecutiveCount = 0;
   
-  // 🆕 Controller para scroll automático
   final ScrollController _scrollController = ScrollController();
 
 
@@ -93,15 +92,16 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
   // --- LISTAS DE CONTROLE DE SINAIS ---
+  // 🆕 Conhecer (40) e Por favor (43) removidos para tratamento especial
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-    33, 34, 35, 36, 37, 38, 39, 40, 46, 47, 51
+    33, 34, 35, 36, 37, 38, 39, 46, 47, 51
   };
 
 
   final Set<int> twoHandedSignalIndices = {
-    41, 42, 43, 44, 45, 48, 49, 50,
+    41, 42, 44, 45, 48, 49, 50,
   };
 
 
@@ -119,7 +119,6 @@ class _CameraScreenState extends State<CameraScreen> {
     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50
   };
   
-  // 🆕 Letras do alfabeto para verificar contexto
   final Set<String> letterCharacters = {
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
     'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
@@ -153,7 +152,7 @@ class _CameraScreenState extends State<CameraScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     _loadModelFromBytes();
-    _controller = CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
+    _controller = CameraController(widget.camera, ResolutionPreset.low, enableAudio: false);
     _initializeControllerFuture = _controller.initialize().then((_) async {
       if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
@@ -187,13 +186,12 @@ class _CameraScreenState extends State<CameraScreen> {
     _timer?.cancel();
     _controller.dispose();
     interpreter?.close();
-    _scrollController.dispose(); // 🆕 Dispose do scroll controller
+    _scrollController.dispose();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
 
 
-  // 🆕 Função para scroll automático ao final
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -207,11 +205,9 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
-  // 🆕 Função para verificar contexto baseado no último caractere adicionado
   bool _lastCharIsLetter() {
     if (_accumulatedText.isEmpty) return false;
     
-    // Pega o último caractere não-espaço
     String trimmed = _accumulatedText.trimRight();
     if (trimmed.isEmpty) return false;
     
@@ -240,8 +236,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
         if (originalImage != null) {
-          img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
-          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75));
+          // 🆕 Atualizado para 224x224 e quality 85
+          img.Image resizedImage = img.copyResize(originalImage, width: 224, height: 224);
+          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 85));
         } else {
           finalImageBytes = originalImageBytes;
         }
@@ -311,7 +308,7 @@ class _CameraScreenState extends State<CameraScreen> {
             resultado = _accumulatedText;
             _lastRecognizedIndex = _pendingSignalIndex;
           });
-          _scrollToEnd(); // 🆕 Scroll automático
+          _scrollToEnd();
         }
       }
       
@@ -429,15 +426,17 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
-      // Lógica de Substituição
+      // 🆕 Lógica de Substituição para Conhecer/Por favor baseada em número de mãos
       final int conhecerIndex = 40; 
       final int porfavorIndex = 43;
       if (predictedIndex == porfavorIndex && handsDetected == 1) {
           predictedIndex = conhecerIndex; 
-          confidence = probabilities[conhecerIndex]; 
+          confidence = probabilities[conhecerIndex];
+          print('🔄 Por favor → Conhecer (1 mão detectada)');
       } else if (predictedIndex == conhecerIndex && handsDetected == 2) {
           predictedIndex = porfavorIndex; 
-          confidence = probabilities[porfavorIndex]; 
+          confidence = probabilities[porfavorIndex];
+          print('🔄 Conhecer → Por favor (2 mãos detectadas)');
       }
 
 
@@ -598,7 +597,6 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = zIndex;
           }
         }
-        // 🆕 LÓGICA ATUALIZADA DO 0/O - verifica último caractere do texto
         else if (predictedIndex == 0) {
           _zConsecutiveCount = 0;
           _processPendingSignal();
@@ -613,7 +611,6 @@ class _CameraScreenState extends State<CameraScreen> {
             print('🔢 Contexto: último char não é letra, mostrando 0');
           }
         }
-        // 🆕 LÓGICA ATUALIZADA DO 8/S - verifica último caractere do texto
         else if (predictedIndex == 8) {
           _zConsecutiveCount = 0;
           _processPendingSignal();
@@ -658,7 +655,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 resultado = _accumulatedText;
                 _lastRecognizedIndex = finalIndex;
               });
-              _scrollToEnd(); // 🆕 Scroll automático ao adicionar
+              _scrollToEnd();
             }
           } else {
             print('⏭️ Mesmo sinal repetido, não adicionado');
@@ -718,7 +715,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 // --- BOTÃO PARA LIMPAR TEXTO ---
                 Positioned(
                   left: 60,
-                  bottom: containerHeight + 25, // 🆕 Diminuído de 30 para 25
+                  bottom: containerHeight + 25,
                   child: FloatingActionButton(
                     mini: true,
                     backgroundColor: Colors.red.withOpacity(0.8),
@@ -747,7 +744,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     color: Colors.black87,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
-                      controller: _scrollController, // 🆕 Adicionado controller
+                      controller: _scrollController,
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
