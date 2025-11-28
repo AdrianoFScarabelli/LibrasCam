@@ -10,6 +10,7 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
 
+
 // Extensão para reshape
 extension on List<double> {
   List<List<double>> reshape(List<int> shape) {
@@ -24,6 +25,7 @@ extension on List<double> {
   }
 }
 
+
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
   const CameraScreen({super.key, required this.camera});
@@ -31,24 +33,30 @@ class CameraScreen extends StatefulWidget {
   _CameraScreenState createState() => _CameraScreenState();
 }
 
+
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
   String resultado = '';
+  String _accumulatedText = ''; 
+  String _lastAddedSignal = ''; // Rastreia o último sinal adicionado
   Interpreter? interpreter;
   Timer? _timer;
   bool _isSendingPicture = false;
 
+
   int? _lastRecognizedIndex;
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
+
 
   // --- Variáveis de Zoom ---
   double _minAvailableZoom = 1.0;
   double _maxAvailableZoom = 1.0;
   double _currentZoomLevel = 1.0;
 
-  // --- MAPeamento de rótulos (51 CLASSES: 0 a 50) ---
+
+  // --- Mapeamento de rótulos (52 CLASSES: 0 a 51) ---
   final Map<int, String> classMapping = {
     0: "Sinal Ambiguo 0/O", 1: "Número 1", 2: "Número 2", 3: "Número 3", 4: "Número 4",
     5: "Número 5", 6: "Número 6", 7: "Número 7", 8: "Sinal Ambiguo 8/S", 9: "Número 9",
@@ -64,22 +72,25 @@ class _CameraScreenState extends State<CameraScreen> {
     48: "Sinal Onde", 49: "Sinal Até", 50: "Sinal Banheiro", 51: "Letra Z",
   };
 
+
   // --- LISTAS DE CONTROLE DE MÃOS ---
-  // Ajuste conforme o seu treinamento.
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
     33, 34, 35, 36, 37, 38, 39, 40, 46, 47
   };
 
+
   final Set<int> twoHandedSignalIndices = {
     41, 42, 43, 44, 45, 48, 49, 50,
   };
+
 
   final Set<int> letterIndices = {
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
     42, 43, 44, 45, 46, 47, 48, 49, 50, 51
   };
+
 
   Future<void> _loadModelFromBytes() async {
     try {
@@ -97,27 +108,28 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
+
   @override
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeRight,
     ]);
-    _loadModelFromBytes();                       //antes estava medium
+    _loadModelFromBytes();
     _controller = CameraController(widget.camera, ResolutionPreset.low, enableAudio: false);
     _initializeControllerFuture = _controller.initialize().then((_) async {
       if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
       _controller.setFlashMode(FlashMode.off);
 
+
       // --- Configuração do Zoom ---
       _maxAvailableZoom = await _controller.getMaxZoomLevel();
       _minAvailableZoom = await _controller.getMinZoomLevel();
       
-      // Define um zoom inicial (ex: 1.0x = sem zoom, 1.5x = leve aproximação)
-      // Se estiver a 1 metro, talvez começar com 1.5x ajude.
       _currentZoomLevel = 1.8; 
       await _controller.setZoomLevel(_currentZoomLevel);
+
 
       _startSendingPictures();
       setState(() {});
@@ -125,6 +137,7 @@ class _CameraScreenState extends State<CameraScreen> {
       print("Erro câmera: $e");
     });
   }
+
 
   @override
   void dispose() {
@@ -135,10 +148,12 @@ class _CameraScreenState extends State<CameraScreen> {
     super.dispose();
   }
 
+
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
+
 
       try {
         final XFile imageFile = await _controller.takePicture();
@@ -146,12 +161,14 @@ class _CameraScreenState extends State<CameraScreen> {
         img.Image? originalImage = img.decodeImage(originalImageBytes);
         Uint8List finalImageBytes;
 
+
         if (originalImage != null) {
           img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
-          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75)); //antes estava 85
+          finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75));
         } else {
           finalImageBytes = originalImageBytes;
         }
+
 
         final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
         var request = http.MultipartRequest('POST', uri);
@@ -162,18 +179,17 @@ class _CameraScreenState extends State<CameraScreen> {
           contentType: MediaType('image', 'jpeg'),
         ));
 
-        // --- INÍCIO DA MEDIÇÃO ---
-        final stopwatch = Stopwatch()..start(); // Inicia o cronômetro
-        
+
+        final stopwatch = Stopwatch()..start();
         var response = await request.send();
-        
-        stopwatch.stop(); // Para o cronômetro
+        stopwatch.stop();
         print('⏱️ Tempo Total (Round Trip): ${stopwatch.elapsedMilliseconds} ms');
-        // --- FIM DA MEDIÇÃO ---
+
 
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
           var jsonResponse = jsonDecode(responseBody);
+
 
           if (jsonResponse['landmarks'] != null) {
             List<dynamic> rawLandmarks = jsonResponse['landmarks'];
@@ -182,13 +198,7 @@ class _CameraScreenState extends State<CameraScreen> {
               _runInference(landmarks);
             }
           } else {
-            if (mounted) {
-              setState(() {
-                resultado = "Nenhuma mão detectada";
-                _lastRecognizedIndex = null;
-                _predictionHistory.clear();
-              });
-            }
+            print('🚫 Nenhuma mão detectada pela API');
           }
         }
       } catch (e) {
@@ -198,6 +208,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     });
   }
+
 
   int _getDetectedHandCount(Float32List landmarks) {
     double sumLeft = 0;
@@ -209,25 +220,53 @@ class _CameraScreenState extends State<CameraScreen> {
     if (sumRight > 0.1) count++;
     return count;
   }
+
+
+  // Função SIMPLIFICADA para extrair texto limpo do sinal
+  String _extractSignText(String signalName, int signalIndex) {
+    // Números (0-9)
+    if (signalIndex >= 0 && signalIndex <= 9) {
+      return signalIndex.toString();
+    }
+    
+    // Letras (A-Z)
+    if (signalName.contains("Letra ")) {
+      return signalName.replaceAll("Letra ", "").replaceAll(" (Contexto)", "").replaceAll(" (Dinâmico)", "").trim();
+    }
+    
+    // Sinais compostos/palavras
+    if (signalName == "Tudo bem") return "Tudo bem ";
+    if (signalName == "Bom dia") return "Bom dia ";
+    if (signalName == "Boa tarde") return "Boa tarde ";
+    if (signalName == "Boa noite") return "Boa noite ";
+    if (signalName == "Qual é o seu nome") return "Qual é o seu nome? ";
+    if (signalName == "O meu nome é ") return "O meu nome é ";
+    
+    // Outros sinais - retorna o nome simplificado
+    if (signalName.contains("Sinal ")) {
+      return signalName.replaceAll("Sinal ", "").split("/")[0].trim() + " ";
+    }
+    
+    // Fallback
+    return signalName.trim() + " ";
+  }
   
   void _runInference(Float32List landmarks) {
     if (interpreter == null) return;
 
+
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(52, 0.0)); // 52 classes
+    var output = List<List<double>>.filled(1, List<double>.filled(52, 0.0));
+
 
     try {
       interpreter!.run(input, output);
       var probabilities = output[0];
-      
-      // --- 🔴 BLOQUEIO TEMPORÁRIO PARA TESTE 🔴 ---
-      // Zera a chance do sinal "Conhecer" (Índice 40)
-      // Isso impede que ele seja escolhido, permitindo testar se o modelo
-      // reconhece "Morar" ou outros sinais sem essa interferência.
-      //probabilities[40] = 0.0; 
-      // ---------------------------------------------
+
 
       int handsDetected = _getDetectedHandCount(landmarks);
+      print('👋 Mãos detectadas: $handsDetected');
+
 
       // Filtro de mãos
       if (handsDetected == 1) {
@@ -235,42 +274,48 @@ class _CameraScreenState extends State<CameraScreen> {
       } else if (handsDetected == 2) {
         for (int index in oneHandedSignalIndices) probabilities[index] = 0.0;
       } else {
-          return; // 0 mãos
+          print('⚠️ Nenhuma mão válida detectada');
+          return;
       }
       
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
+      
+      print('🎯 Predição: Índice $predictedIndex | Confiança: ${(confidence * 100).toStringAsFixed(1)}%');
+
 
       // Lógica de Substituição
-      final int conhecerIndex = 40; final int porfavorIndex = 43;
+      final int conhecerIndex = 40; 
+      final int porfavorIndex = 43;
       if (predictedIndex == porfavorIndex && handsDetected == 1) {
-          predictedIndex = conhecerIndex; confidence = probabilities[conhecerIndex]; 
+          predictedIndex = conhecerIndex; 
+          confidence = probabilities[conhecerIndex]; 
       } else if (predictedIndex == conhecerIndex && handsDetected == 2) {
-          predictedIndex = porfavorIndex; confidence = probabilities[porfavorIndex]; 
+          predictedIndex = porfavorIndex; 
+          confidence = probabilities[porfavorIndex]; 
       }
+
 
       if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
+
         String finalResultName;
         int finalIndex;
+
 
         // Índices para lógica dinâmica e ambígua
         final int kIndex = 18;
         final int twoIndex = 2;
         final int iIndex = 20;
         final int jIndex = 19;
-        
         final int bomIndex = 38; 
         final int joiaIndex = 35; 
         final int dIndex = 14; 
-        final int conhecerIndex = 40; 
         final int noiteIndex = 46; 
-        
-        // --- NOVOS ÍNDICES PARA NOVAS LÓGICAS ---
-        final int uIndex = 28; // Letra U
+        final int uIndex = 28;
         
         bool isDynamicH = false;
         bool isDynamicJ = false;
@@ -278,12 +323,14 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isBomDia = false;
         bool isBoaTarde = false;
         bool isBoaNoite = false;
-        bool isQualSeuNome = false; // NOVO
-        bool isMeuNomeE = false;    // NOVO
+        bool isQualSeuNome = false;
+        bool isMeuNomeE = false;
+
 
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
           int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
 
           if (lastSignal == kIndex && currentSignal == twoIndex) isDynamicH = true;
           if (lastSignal == iIndex && currentSignal == jIndex) isDynamicJ = true;
@@ -291,45 +338,44 @@ class _CameraScreenState extends State<CameraScreen> {
           if (lastSignal == bomIndex && currentSignal == dIndex) isBomDia = true;
           if (lastSignal == bomIndex && currentSignal == conhecerIndex) isBoaTarde = true;
           if (lastSignal == bomIndex && currentSignal == noiteIndex) isBoaNoite = true;
-          
-          // --- NOVA LÓGICA: "Qual é o seu nome?" (U + U) ---
-          if (lastSignal == uIndex && currentSignal == uIndex) {
-            isQualSeuNome = true;
-          }
-          
-          // --- NOVA LÓGICA: "O meu nome é" (2 + 2) ---
-          if (lastSignal == twoIndex && currentSignal == twoIndex) {
-            isMeuNomeE = true;
-          }
+          if (lastSignal == uIndex && currentSignal == uIndex) isQualSeuNome = true;
+          if (lastSignal == twoIndex && currentSignal == twoIndex) isMeuNomeE = true;
         }
         
         if (isDynamicH) {
           finalResultName = "Letra H (Dinâmico)";
-          finalIndex = -1; _predictionHistory.clear();
+          finalIndex = -1; 
+          _predictionHistory.clear();
         } else if (isDynamicJ) {
           finalResultName = "Letra J (Dinâmico)";
-          finalIndex = -2; _predictionHistory.clear();
+          finalIndex = -2; 
+          _predictionHistory.clear();
         } else if (isTudoBem) {
           finalResultName = "Tudo bem";
-          finalIndex = -3; _predictionHistory.clear();
+          finalIndex = -3; 
+          _predictionHistory.clear();
         } else if (isBomDia) {
           finalResultName = "Bom dia";
-          finalIndex = -4; _predictionHistory.clear();
+          finalIndex = -4; 
+          _predictionHistory.clear();
         } else if (isBoaTarde) {
           finalResultName = "Boa tarde";
-          finalIndex = -5; _predictionHistory.clear();
+          finalIndex = -5; 
+          _predictionHistory.clear();
         } else if (isBoaNoite) {
           finalResultName = "Boa noite";
-          finalIndex = -6; _predictionHistory.clear();
-        } else if (isQualSeuNome) { // --- NOVO RESULTADO ---
+          finalIndex = -6; 
+          _predictionHistory.clear();
+        } else if (isQualSeuNome) {
           finalResultName = "Qual é o seu nome";
-          finalIndex = -7; _predictionHistory.clear();
-        } else if (isMeuNomeE) { // --- NOVO RESULTADO ---
+          finalIndex = -7; 
+          _predictionHistory.clear();
+        } else if (isMeuNomeE) {
           finalResultName = "O meu nome é ";
-          finalIndex = -8; _predictionHistory.clear();
+          finalIndex = -8; 
+          _predictionHistory.clear();
         }
-        
-        else if (predictedIndex == 0) { // 0/O
+        else if (predictedIndex == 0) {
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResultName = "Letra O (Contexto)";
             finalIndex = 0;
@@ -337,7 +383,7 @@ class _CameraScreenState extends State<CameraScreen> {
             finalResultName = "Número 0 (Contexto)";
             finalIndex = 0;
           }
-        } else if (predictedIndex == 8) { // 8/S
+        } else if (predictedIndex == 8) {
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResultName = "Letra S (Contexto)";
             finalIndex = 8;
@@ -347,7 +393,6 @@ class _CameraScreenState extends State<CameraScreen> {
           } 
         } 
         else {
-          // Mapeamento de nomes para sinais estáticos com duplo sentido
           if (predictedIndex == bomIndex) {
             finalResultName = "Bom/Obrigado"; 
           } else if (predictedIndex == conhecerIndex) {
@@ -358,36 +403,43 @@ class _CameraScreenState extends State<CameraScreen> {
           finalIndex = predictedIndex;
         }
 
-        if (mounted) {
-          setState(() {
-            if (finalIndex >= 0 && predictedIndex == finalIndex) {
-               resultado = "$finalResultName (${(confidence * 100).toStringAsFixed(0)}%)";
-            } else {
-               resultado = finalResultName;
-            }
-            _lastRecognizedIndex = finalIndex;
-          });
+
+        // 🔥 LÓGICA SIMPLIFICADA: adiciona se for diferente do último sinal
+        String extractedText = _extractSignText(finalResultName, finalIndex);
+        
+        print('📝 Sinal reconhecido: "$finalResultName" → Texto extraído: "$extractedText"');
+        print('📋 Último sinal adicionado: "$_lastAddedSignal"');
+        
+        if (extractedText != _lastAddedSignal) {
+          _accumulatedText += extractedText;
+          _lastAddedSignal = extractedText;
+          
+          print('✅ ADICIONADO! Texto acumulado agora: "$_accumulatedText"');
+          
+          if (mounted) {
+            setState(() {
+              resultado = _accumulatedText;
+              _lastRecognizedIndex = finalIndex;
+            });
+          }
+        } else {
+          print('⏭️ Mesmo sinal repetido, não adicionado');
         }
       } else {
-        if (mounted) {
-          setState(() {
-            resultado = "Sinal não reconhecido";
-            _lastRecognizedIndex = null;
-            _predictionHistory.clear();
-          });
-        }
+        print('❌ Confiança baixa (${(confidence * 100).toStringAsFixed(1)}%), ignorando');
       }
     } catch (e) {
       print('Erro TFLite: $e');
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
     final screenHeight = screenSize.height; 
-    final resultFontSize = screenHeight * 0.09;
-    final containerHeight = screenHeight * 0.15;
+    final resultFontSize = screenHeight * 0.06;
+    final containerHeight = screenHeight * 0.20;
     
     return Scaffold(
       body: FutureBuilder<void>(
@@ -405,7 +457,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   top: 50,
                   bottom: 100,
                   child: RotatedBox(
-                    quarterTurns: 3, // Slider vertical
+                    quarterTurns: 3,
                     child: Slider(
                       value: _currentZoomLevel,
                       min: _minAvailableZoom,
@@ -421,6 +473,24 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
                 ),
+                // --- BOTÃO PARA LIMPAR TEXTO ---
+                Positioned(
+                  left: 20,
+                  bottom: containerHeight + 10,
+                  child: FloatingActionButton(
+                    mini: true,
+                    backgroundColor: Colors.red.withOpacity(0.8),
+                    onPressed: () {
+                      setState(() {
+                        _accumulatedText = '';
+                        resultado = '';
+                        _lastAddedSignal = '';
+                      });
+                      print('🗑️ Texto limpo!');
+                    },
+                    child: const Icon(Icons.clear, color: Colors.white),
+                  ),
+                ),
                 // --- TEXTO DE RESULTADO ---
                 Positioned(
                   bottom: 0,
@@ -430,14 +500,18 @@ class _CameraScreenState extends State<CameraScreen> {
                     height: containerHeight,
                     padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                     color: Colors.black87,
-                    child: Center(
-                      child: Text(
-                        resultado,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: resultFontSize.clamp(16.0, 28.0), 
-                          color: Colors.white, 
-                          fontWeight: FontWeight.bold,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          resultado.isEmpty ? '' : resultado,
+                          textAlign: TextAlign.left,
+                          style: TextStyle(
+                            fontSize: resultFontSize.clamp(16.0, 24.0), 
+                            color: Colors.white, 
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
