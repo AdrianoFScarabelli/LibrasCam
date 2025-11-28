@@ -12,6 +12,7 @@ import 'package:image/image.dart' as img;
 
 
 
+
 // Extensão para reshape
 extension on List<double> {
   List<List<double>> reshape(List<int> shape) {
@@ -28,6 +29,7 @@ extension on List<double> {
 
 
 
+
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
   const CameraScreen({super.key, required this.camera});
@@ -37,21 +39,27 @@ class CameraScreen extends StatefulWidget {
 
 
 
+
 class _CameraScreenState extends State<CameraScreen> {
   late CameraController _controller;
   late Future<void> _initializeControllerFuture;
   String resultado = '';
   String _accumulatedText = ''; 
-  String _lastAddedSignal = ''; // Rastreia o último sinal adicionado
+  String _lastAddedSignal = ''; 
   Interpreter? interpreter;
   Timer? _timer;
   bool _isSendingPicture = false;
 
 
-
   int? _lastRecognizedIndex;
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
+  
+  // 🆕 Novas variáveis para as lógicas especiais
+  int? _pendingSignalIndex; // Sinal que está aguardando confirmação
+  String? _pendingSignalName; // Nome do sinal pendente
+  int _zConsecutiveCount = 0; // Contador de Z's consecutivos
+
 
 
 
@@ -59,6 +67,7 @@ class _CameraScreenState extends State<CameraScreen> {
   double _minAvailableZoom = 1.0;
   double _maxAvailableZoom = 1.0;
   double _currentZoomLevel = 1.0;
+
 
 
 
@@ -80,6 +89,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
   // --- LISTAS DE CONTROLE DE SINAIS ---
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
@@ -87,21 +97,26 @@ class _CameraScreenState extends State<CameraScreen> {
     33, 34, 35, 36, 37, 38, 39, 40, 46, 47, 51
   };
 
+
   final Set<int> twoHandedSignalIndices = {
     41, 42, 43, 44, 45, 48, 49, 50,
   };
+
 
   final Set<int> letterIndices = {
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 51
   };
 
+
   final Set<int> numberIndices = {
     1,2,3,4,5,6,7,9
   };
 
+
   final Set<int> saudacoesIndices = {
     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50
   };
+
 
 
   Future<void> _loadModelFromBytes() async {
@@ -122,6 +137,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
   @override
   void initState() {
     super.initState();
@@ -137,6 +153,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
       // --- Configuração do Zoom ---
       _maxAvailableZoom = await _controller.getMaxZoomLevel();
       _minAvailableZoom = await _controller.getMinZoomLevel();
@@ -146,12 +163,14 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
       _startSendingPictures();
       setState(() {});
     }).catchError((e) {
       print("Erro câmera: $e");
     });
   }
+
 
 
 
@@ -166,10 +185,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
+
 
 
 
@@ -181,12 +202,14 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
         if (originalImage != null) {
           img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
           finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75));
         } else {
           finalImageBytes = originalImageBytes;
         }
+
 
 
 
@@ -201,6 +224,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
         final stopwatch = Stopwatch()..start();
         var response = await request.send();
         stopwatch.stop();
@@ -208,9 +232,11 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
           var jsonResponse = jsonDecode(responseBody);
+
 
 
 
@@ -222,6 +248,8 @@ class _CameraScreenState extends State<CameraScreen> {
             }
           } else {
             print('🚫 Nenhuma mão detectada pela API');
+            // 🆕 Se não detectar mão e houver sinal pendente, adiciona o pendente
+            _processPendingSignal();
           }
         }
       } catch (e) {
@@ -231,6 +259,32 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     });
   }
+
+
+  // 🆕 Processa sinal pendente quando não há detecção
+  void _processPendingSignal() {
+    if (_pendingSignalIndex != null && _pendingSignalName != null) {
+      String extractedText = _extractSignText(_pendingSignalName!, _pendingSignalIndex!);
+      
+      if (extractedText != _lastAddedSignal) {
+        _accumulatedText += extractedText;
+        _lastAddedSignal = extractedText;
+        
+        print('✅ SINAL PENDENTE ADICIONADO: "$extractedText"');
+        
+        if (mounted) {
+          setState(() {
+            resultado = _accumulatedText;
+            _lastRecognizedIndex = _pendingSignalIndex;
+          });
+        }
+      }
+      
+      _pendingSignalIndex = null;
+      _pendingSignalName = null;
+    }
+  }
+
 
 
 
@@ -244,6 +298,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (sumRight > 0.1) count++;
     return count;
   }
+
 
 
 
@@ -281,8 +336,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
     var input = landmarks.reshape([1, 126]);
     var output = List<List<double>>.filled(1, List<double>.filled(52, 0.0));
+
 
 
 
@@ -292,8 +349,10 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
       int handsDetected = _getDetectedHandCount(landmarks);
       print('👋 Mãos detectadas: $handsDetected');
+
 
 
 
@@ -304,6 +363,7 @@ class _CameraScreenState extends State<CameraScreen> {
         for (int index in oneHandedSignalIndices) probabilities[index] = 0.0;
       } else {
           print('⚠️ Nenhuma mão válida detectada');
+          _processPendingSignal(); // 🆕 Adiciona pendente se não detectar mão
           return;
       }
       
@@ -312,6 +372,7 @@ class _CameraScreenState extends State<CameraScreen> {
       var confidence = probabilities[predictedIndex];
       
       print('🎯 Predição: Índice $predictedIndex | Confiança: ${(confidence * 100).toStringAsFixed(1)}%');
+
 
 
 
@@ -328,14 +389,17 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
+
       if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
 
 
+
         String finalResultName;
         int finalIndex;
+
 
 
 
@@ -349,6 +413,7 @@ class _CameraScreenState extends State<CameraScreen> {
         final int dIndex = 14; 
         final int noiteIndex = 46; 
         final int uIndex = 28;
+        final int zIndex = 51; // 🆕 Índice do Z
         
         bool isDynamicH = false;
         bool isDynamicJ = false;
@@ -358,12 +423,15 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isBoaNoite = false;
         bool isQualSeuNome = false;
         bool isMeuNomeE = false;
+        bool shouldSkipAdding = false; // 🆕 Flag para pular adição
+
 
 
 
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
           int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
 
 
 
@@ -381,36 +449,106 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "Letra H (Dinâmico)";
           finalIndex = -1; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isDynamicJ) {
           finalResultName = "Letra J (Dinâmico)";
           finalIndex = -2; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isTudoBem) {
           finalResultName = "Tudo bem";
           finalIndex = -3; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isBomDia) {
           finalResultName = "Bom dia";
           finalIndex = -4; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isBoaTarde) {
           finalResultName = "Boa tarde";
           finalIndex = -5; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isBoaNoite) {
           finalResultName = "Boa noite";
           finalIndex = -6; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isQualSeuNome) {
           finalResultName = "Qual é o seu nome";
           finalIndex = -7; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
         } else if (isMeuNomeE) {
           finalResultName = "O meu nome é ";
           finalIndex = -8; 
           _predictionHistory.clear();
+          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalName = null;
+        }
+        // 🆕 LÓGICA DO NÚMERO 2: fica pendente para verificar se vem outro 2
+        else if (predictedIndex == twoIndex) {
+          // Se já havia um 2 pendente, forma "O meu nome é"
+          if (_pendingSignalIndex == twoIndex) {
+            finalResultName = "O meu nome é ";
+            finalIndex = -8;
+            _predictionHistory.clear();
+            _pendingSignalIndex = null;
+            _pendingSignalName = null;
+          } else {
+            // Adiciona o 2 pendente anterior se existir
+            _processPendingSignal();
+            
+            // Coloca este 2 como pendente
+            _pendingSignalIndex = twoIndex;
+            _pendingSignalName = "Número 2";
+            print('⏸️ Número 2 ficou PENDENTE, aguardando próximo sinal...');
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = twoIndex;
+          }
+        }
+        // 🆕 LÓGICA DO BOM (38): não adiciona sozinho, só em composições
+        else if (predictedIndex == bomIndex) {
+          // Adiciona sinal pendente antes de processar o Bom
+          _processPendingSignal();
+          
+          // Coloca Bom como pendente para formar composição
+          _pendingSignalIndex = bomIndex;
+          _pendingSignalName = "Sinal Obrigado";
+          print('⏸️ "Bom" ficou PENDENTE, aguardando composição...');
+          shouldSkipAdding = true;
+          finalResultName = "";
+          finalIndex = bomIndex;
+        }
+        // 🆕 LÓGICA DO Z: precisa de 3 detecções consecutivas
+        else if (predictedIndex == zIndex) {
+          _zConsecutiveCount++;
+          print('🔤 Z detectado $_zConsecutiveCount vez(es) consecutivas');
+          
+          if (_zConsecutiveCount >= 3) {
+            finalResultName = "Letra Z";
+            finalIndex = zIndex;
+            _zConsecutiveCount = 0; // Reset contador
+            _processPendingSignal(); // Adiciona qualquer pendente antes
+          } else {
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = zIndex;
+          }
         }
         else if (predictedIndex == 0) {
+          _zConsecutiveCount = 0; // 🆕 Reset contador Z
+          _processPendingSignal(); // 🆕 Adiciona pendente se houver
+          
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResultName = "Letra O (Contexto)";
             finalIndex = 0;
@@ -419,6 +557,9 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = 0;
           }
         } else if (predictedIndex == 8) {
+          _zConsecutiveCount = 0; // 🆕 Reset contador Z
+          _processPendingSignal(); // 🆕 Adiciona pendente se houver
+          
           if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
             finalResultName = "Letra S (Contexto)";
             finalIndex = 8;
@@ -428,9 +569,10 @@ class _CameraScreenState extends State<CameraScreen> {
           } 
         } 
         else {
-          if (predictedIndex == bomIndex) {
-            finalResultName = "Bom/Obrigado"; 
-          } else if (predictedIndex == conhecerIndex) {
+          _zConsecutiveCount = 0; // 🆕 Reset contador Z
+          _processPendingSignal(); // 🆕 Adiciona pendente se houver
+          
+          if (predictedIndex == conhecerIndex) {
             finalResultName = "Conhecer/Tarde"; 
           } else {
             finalResultName = classMapping[predictedIndex] ?? "Desconhecido";
@@ -439,35 +581,38 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
-
-        // 🔥 LÓGICA SIMPLIFICADA: adiciona se for diferente do último sinal
-        String extractedText = _extractSignText(finalResultName, finalIndex);
-        
-        print('📝 Sinal reconhecido: "$finalResultName" → Texto extraído: "$extractedText"');
-        print('📋 Último sinal adicionado: "$_lastAddedSignal"');
-        
-        if (extractedText != _lastAddedSignal) {
-          _accumulatedText += extractedText;
-          _lastAddedSignal = extractedText;
+        // 🆕 Só adiciona se não for para pular
+        if (!shouldSkipAdding && finalResultName.isNotEmpty) {
+          String extractedText = _extractSignText(finalResultName, finalIndex);
           
-          print('✅ ADICIONADO! Texto acumulado agora: "$_accumulatedText"');
+          print('📝 Sinal reconhecido: "$finalResultName" → Texto extraído: "$extractedText"');
+          print('📋 Último sinal adicionado: "$_lastAddedSignal"');
           
-          if (mounted) {
-            setState(() {
-              resultado = _accumulatedText;
-              _lastRecognizedIndex = finalIndex;
-            });
+          if (extractedText != _lastAddedSignal) {
+            _accumulatedText += extractedText;
+            _lastAddedSignal = extractedText;
+            
+            print('✅ ADICIONADO! Texto acumulado agora: "$_accumulatedText"');
+            
+            if (mounted) {
+              setState(() {
+                resultado = _accumulatedText;
+                _lastRecognizedIndex = finalIndex;
+              });
+            }
+          } else {
+            print('⏭️ Mesmo sinal repetido, não adicionado');
           }
-        } else {
-          print('⏭️ Mesmo sinal repetido, não adicionado');
         }
       } else {
         print('❌ Confiança baixa (${(confidence * 100).toStringAsFixed(1)}%), ignorando');
+        _processPendingSignal(); // 🆕 Adiciona pendente quando confiança baixa
       }
     } catch (e) {
       print('Erro TFLite: $e');
     }
   }
+
 
 
 
@@ -522,6 +667,9 @@ class _CameraScreenState extends State<CameraScreen> {
                         _accumulatedText = '';
                         resultado = '';
                         _lastAddedSignal = '';
+                        _pendingSignalIndex = null; // 🆕 Limpa pendente
+                        _pendingSignalName = null;
+                        _zConsecutiveCount = 0; // 🆕 Reset contador Z
                       });
                       print('🗑️ Texto limpo!');
                     },
@@ -531,11 +679,11 @@ class _CameraScreenState extends State<CameraScreen> {
                 // --- TEXTO DE RESULTADO ---
                 Positioned(
                   bottom: 0,
-                  left: 30, // Aumentado de 0 para 30 - afasta do canto esquerdo
-                  right: 30, // Adicionado 30 - afasta do canto direito
+                  left: 30,
+                  right: 30,
                   child: Container(
                     height: containerHeight,
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0), // Aumentado padding
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
                     color: Colors.black87,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
