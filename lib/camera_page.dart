@@ -55,10 +55,12 @@ class _CameraScreenState extends State<CameraScreen> {
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
   
-  // 🆕 Novas variáveis para as lógicas especiais
-  int? _pendingSignalIndex; // Sinal que está aguardando confirmação
-  String? _pendingSignalName; // Nome do sinal pendente
-  int _zConsecutiveCount = 0; // Contador de Z's consecutivos
+  int? _pendingSignalIndex;
+  String? _pendingSignalName;
+  int _zConsecutiveCount = 0;
+  
+  // 🆕 Controller para scroll automático
+  final ScrollController _scrollController = ScrollController();
 
 
 
@@ -116,6 +118,12 @@ class _CameraScreenState extends State<CameraScreen> {
   final Set<int> saudacoesIndices = {
     33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50
   };
+  
+  // 🆕 Letras do alfabeto para verificar contexto
+  final Set<String> letterCharacters = {
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
+    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+  };
 
 
 
@@ -145,7 +153,7 @@ class _CameraScreenState extends State<CameraScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     _loadModelFromBytes();
-    _controller = CameraController(widget.camera, ResolutionPreset.low, enableAudio: false);
+    _controller = CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
     _initializeControllerFuture = _controller.initialize().then((_) async {
       if (!mounted) return;
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
@@ -179,8 +187,36 @@ class _CameraScreenState extends State<CameraScreen> {
     _timer?.cancel();
     _controller.dispose();
     interpreter?.close();
+    _scrollController.dispose(); // 🆕 Dispose do scroll controller
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
+  }
+
+
+  // 🆕 Função para scroll automático ao final
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+
+  // 🆕 Função para verificar contexto baseado no último caractere adicionado
+  bool _lastCharIsLetter() {
+    if (_accumulatedText.isEmpty) return false;
+    
+    // Pega o último caractere não-espaço
+    String trimmed = _accumulatedText.trimRight();
+    if (trimmed.isEmpty) return false;
+    
+    String lastChar = trimmed[trimmed.length - 1].toUpperCase();
+    return letterCharacters.contains(lastChar);
   }
 
 
@@ -248,7 +284,6 @@ class _CameraScreenState extends State<CameraScreen> {
             }
           } else {
             print('🚫 Nenhuma mão detectada pela API');
-            // 🆕 Se não detectar mão e houver sinal pendente, adiciona o pendente
             _processPendingSignal();
           }
         }
@@ -261,7 +296,6 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
-  // 🆕 Processa sinal pendente quando não há detecção
   void _processPendingSignal() {
     if (_pendingSignalIndex != null && _pendingSignalName != null) {
       String extractedText = _extractSignText(_pendingSignalName!, _pendingSignalIndex!);
@@ -277,6 +311,7 @@ class _CameraScreenState extends State<CameraScreen> {
             resultado = _accumulatedText;
             _lastRecognizedIndex = _pendingSignalIndex;
           });
+          _scrollToEnd(); // 🆕 Scroll automático
         }
       }
       
@@ -302,33 +337,51 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
-  // Função SIMPLIFICADA para extrair texto limpo do sinal
   String _extractSignText(String signalName, int signalIndex) {
+    String baseText = "";
+    
     // Números (0-9)
     if (signalIndex >= 0 && signalIndex <= 9) {
-      return signalIndex.toString();
+      baseText = signalIndex.toString();
     }
-    
     // Letras (A-Z)
-    if (signalName.contains("Letra ")) {
-      return signalName.replaceAll("Letra ", "").replaceAll(" (Contexto)", "").replaceAll(" (Dinâmico)", "").trim();
+    else if (signalName.contains("Letra ")) {
+      baseText = signalName.replaceAll("Letra ", "").replaceAll(" (Contexto)", "").replaceAll(" (Dinâmico)", "").trim();
     }
-    
-    // Sinais compostos/palavras
-    if (signalName == "Tudo bem") return "Tudo bem ";
-    if (signalName == "Bom dia") return "Bom dia ";
-    if (signalName == "Boa tarde") return "Boa tarde ";
-    if (signalName == "Boa noite") return "Boa noite ";
-    if (signalName == "Qual é o seu nome") return "Qual é o seu nome? ";
-    if (signalName == "O meu nome é ") return "O meu nome é ";
-    
-    // Outros sinais - retorna o nome simplificado
-    if (signalName.contains("Sinal ")) {
-      return signalName.replaceAll("Sinal ", "").split("/")[0].trim() + " ";
+    // Sinais compostos/palavras (já têm espaço definido)
+    else if (signalName == "Tudo bem") {
+      baseText = "Tudo bem ";
     }
-    
+    else if (signalName == "Bom dia") {
+      baseText = "Bom dia ";
+    }
+    else if (signalName == "Boa tarde") {
+      baseText = "Boa tarde ";
+    }
+    else if (signalName == "Boa noite") {
+      baseText = "Boa noite ";
+    }
+    else if (signalName == "Qual é o seu nome") {
+      baseText = "Qual é o seu nome? ";
+    }
+    else if (signalName == "O meu nome é ") {
+      baseText = "O meu nome é ";
+    }
+    // Outros sinais
+    else if (signalName.contains("Sinal ")) {
+      baseText = signalName.replaceAll("Sinal ", "").split("/")[0].trim();
+    }
     // Fallback
-    return signalName.trim() + " ";
+    else {
+      baseText = signalName.trim();
+    }
+    
+    // Se o sinal está em saudacoesIndices e ainda não tem espaço, adiciona
+    if (signalIndex >= 0 && saudacoesIndices.contains(signalIndex) && !baseText.endsWith(" ")) {
+      baseText += " ";
+    }
+    
+    return baseText;
   }
   
   void _runInference(Float32List landmarks) {
@@ -363,7 +416,7 @@ class _CameraScreenState extends State<CameraScreen> {
         for (int index in oneHandedSignalIndices) probabilities[index] = 0.0;
       } else {
           print('⚠️ Nenhuma mão válida detectada');
-          _processPendingSignal(); // 🆕 Adiciona pendente se não detectar mão
+          _processPendingSignal();
           return;
       }
       
@@ -411,9 +464,9 @@ class _CameraScreenState extends State<CameraScreen> {
         final int bomIndex = 38; 
         final int joiaIndex = 35; 
         final int dIndex = 14; 
-        final int noiteIndex = 46; 
+        final int noiteIndex = 46;
         final int uIndex = 28;
-        final int zIndex = 51; // 🆕 Índice do Z
+        final int zIndex = 51;
         
         bool isDynamicH = false;
         bool isDynamicJ = false;
@@ -423,7 +476,7 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isBoaNoite = false;
         bool isQualSeuNome = false;
         bool isMeuNomeE = false;
-        bool shouldSkipAdding = false; // 🆕 Flag para pular adição
+        bool shouldSkipAdding = false;
 
 
 
@@ -449,54 +502,52 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "Letra H (Dinâmico)";
           finalIndex = -1; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isDynamicJ) {
           finalResultName = "Letra J (Dinâmico)";
           finalIndex = -2; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isTudoBem) {
           finalResultName = "Tudo bem";
           finalIndex = -3; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isBomDia) {
           finalResultName = "Bom dia";
           finalIndex = -4; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isBoaTarde) {
           finalResultName = "Boa tarde";
           finalIndex = -5; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isBoaNoite) {
           finalResultName = "Boa noite";
           finalIndex = -6; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isQualSeuNome) {
           finalResultName = "Qual é o seu nome";
           finalIndex = -7; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (isMeuNomeE) {
           finalResultName = "O meu nome é ";
           finalIndex = -8; 
           _predictionHistory.clear();
-          _pendingSignalIndex = null; // 🆕 Limpa pendente
+          _pendingSignalIndex = null;
           _pendingSignalName = null;
         }
-        // 🆕 LÓGICA DO NÚMERO 2: fica pendente para verificar se vem outro 2
         else if (predictedIndex == twoIndex) {
-          // Se já havia um 2 pendente, forma "O meu nome é"
           if (_pendingSignalIndex == twoIndex) {
             finalResultName = "O meu nome é ";
             finalIndex = -8;
@@ -504,10 +555,8 @@ class _CameraScreenState extends State<CameraScreen> {
             _pendingSignalIndex = null;
             _pendingSignalName = null;
           } else {
-            // Adiciona o 2 pendente anterior se existir
             _processPendingSignal();
             
-            // Coloca este 2 como pendente
             _pendingSignalIndex = twoIndex;
             _pendingSignalName = "Número 2";
             print('⏸️ Número 2 ficou PENDENTE, aguardando próximo sinal...');
@@ -516,12 +565,9 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = twoIndex;
           }
         }
-        // 🆕 LÓGICA DO BOM (38): não adiciona sozinho, só em composições
         else if (predictedIndex == bomIndex) {
-          // Adiciona sinal pendente antes de processar o Bom
           _processPendingSignal();
           
-          // Coloca Bom como pendente para formar composição
           _pendingSignalIndex = bomIndex;
           _pendingSignalName = "Sinal Obrigado";
           print('⏸️ "Bom" ficou PENDENTE, aguardando composição...');
@@ -529,7 +575,14 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "";
           finalIndex = bomIndex;
         }
-        // 🆕 LÓGICA DO Z: precisa de 3 detecções consecutivas
+        else if (predictedIndex == noiteIndex) {
+          _processPendingSignal();
+          
+          print('⏭️ "Noite" detectado sozinho, ignorando (só aparece em "Boa noite")');
+          shouldSkipAdding = true;
+          finalResultName = "";
+          finalIndex = noiteIndex;
+        }
         else if (predictedIndex == zIndex) {
           _zConsecutiveCount++;
           print('🔤 Z detectado $_zConsecutiveCount vez(es) consecutivas');
@@ -537,40 +590,47 @@ class _CameraScreenState extends State<CameraScreen> {
           if (_zConsecutiveCount >= 3) {
             finalResultName = "Letra Z";
             finalIndex = zIndex;
-            _zConsecutiveCount = 0; // Reset contador
-            _processPendingSignal(); // Adiciona qualquer pendente antes
+            _zConsecutiveCount = 0;
+            _processPendingSignal();
           } else {
             shouldSkipAdding = true;
             finalResultName = "";
             finalIndex = zIndex;
           }
         }
+        // 🆕 LÓGICA ATUALIZADA DO 0/O - verifica último caractere do texto
         else if (predictedIndex == 0) {
-          _zConsecutiveCount = 0; // 🆕 Reset contador Z
-          _processPendingSignal(); // 🆕 Adiciona pendente se houver
+          _zConsecutiveCount = 0;
+          _processPendingSignal();
           
-          if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
+          if (_lastCharIsLetter()) {
             finalResultName = "Letra O (Contexto)";
             finalIndex = 0;
+            print('🔤 Contexto: último char é letra, mostrando O');
           } else {
             finalResultName = "Número 0 (Contexto)";
             finalIndex = 0;
+            print('🔢 Contexto: último char não é letra, mostrando 0');
           }
-        } else if (predictedIndex == 8) {
-          _zConsecutiveCount = 0; // 🆕 Reset contador Z
-          _processPendingSignal(); // 🆕 Adiciona pendente se houver
+        }
+        // 🆕 LÓGICA ATUALIZADA DO 8/S - verifica último caractere do texto
+        else if (predictedIndex == 8) {
+          _zConsecutiveCount = 0;
+          _processPendingSignal();
           
-          if (_lastRecognizedIndex != null && letterIndices.contains(_lastRecognizedIndex!)) {
+          if (_lastCharIsLetter()) {
             finalResultName = "Letra S (Contexto)";
             finalIndex = 8;
+            print('🔤 Contexto: último char é letra, mostrando S');
           } else {
             finalResultName = "Número 8 (Contexto)";
             finalIndex = 8;
+            print('🔢 Contexto: último char não é letra, mostrando 8');
           } 
         } 
         else {
-          _zConsecutiveCount = 0; // 🆕 Reset contador Z
-          _processPendingSignal(); // 🆕 Adiciona pendente se houver
+          _zConsecutiveCount = 0;
+          _processPendingSignal();
           
           if (predictedIndex == conhecerIndex) {
             finalResultName = "Conhecer/Tarde"; 
@@ -581,7 +641,6 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
-        // 🆕 Só adiciona se não for para pular
         if (!shouldSkipAdding && finalResultName.isNotEmpty) {
           String extractedText = _extractSignText(finalResultName, finalIndex);
           
@@ -599,6 +658,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 resultado = _accumulatedText;
                 _lastRecognizedIndex = finalIndex;
               });
+              _scrollToEnd(); // 🆕 Scroll automático ao adicionar
             }
           } else {
             print('⏭️ Mesmo sinal repetido, não adicionado');
@@ -606,7 +666,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       } else {
         print('❌ Confiança baixa (${(confidence * 100).toStringAsFixed(1)}%), ignorando');
-        _processPendingSignal(); // 🆕 Adiciona pendente quando confiança baixa
+        _processPendingSignal();
       }
     } catch (e) {
       print('Erro TFLite: $e');
@@ -658,7 +718,7 @@ class _CameraScreenState extends State<CameraScreen> {
                 // --- BOTÃO PARA LIMPAR TEXTO ---
                 Positioned(
                   left: 60,
-                  bottom: containerHeight + 40,
+                  bottom: containerHeight + 25, // 🆕 Diminuído de 30 para 25
                   child: FloatingActionButton(
                     mini: true,
                     backgroundColor: Colors.red.withOpacity(0.8),
@@ -667,9 +727,9 @@ class _CameraScreenState extends State<CameraScreen> {
                         _accumulatedText = '';
                         resultado = '';
                         _lastAddedSignal = '';
-                        _pendingSignalIndex = null; // 🆕 Limpa pendente
+                        _pendingSignalIndex = null;
                         _pendingSignalName = null;
-                        _zConsecutiveCount = 0; // 🆕 Reset contador Z
+                        _zConsecutiveCount = 0;
                       });
                       print('🗑️ Texto limpo!');
                     },
@@ -687,6 +747,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     color: Colors.black87,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
+                      controller: _scrollController, // 🆕 Adicionado controller
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
