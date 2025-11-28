@@ -11,6 +11,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
 
 
+
 // Extensão para reshape
 extension on List<double> {
   List<List<double>> reshape(List<int> shape) {
@@ -26,12 +27,14 @@ extension on List<double> {
 }
 
 
+
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
   const CameraScreen({super.key, required this.camera});
   @override
   _CameraScreenState createState() => _CameraScreenState();
 }
+
 
 
 class _CameraScreenState extends State<CameraScreen> {
@@ -45,15 +48,18 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isSendingPicture = false;
 
 
+
   int? _lastRecognizedIndex;
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
+
 
 
   // --- Variáveis de Zoom ---
   double _minAvailableZoom = 1.0;
   double _maxAvailableZoom = 1.0;
   double _currentZoomLevel = 1.0;
+
 
 
   // --- Mapeamento de rótulos (52 CLASSES: 0 a 51) ---
@@ -73,22 +79,28 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
 
-  // --- LISTAS DE CONTROLE DE MÃOS ---
+
+  // --- LISTAS DE CONTROLE DE SINAIS ---
   final Set<int> oneHandedSignalIndices = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-    33, 34, 35, 36, 37, 38, 39, 40, 46, 47
+    33, 34, 35, 36, 37, 38, 39, 40, 46, 47, 51
   };
-
 
   final Set<int> twoHandedSignalIndices = {
     41, 42, 43, 44, 45, 48, 49, 50,
   };
 
-
   final Set<int> letterIndices = {
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
-    42, 43, 44, 45, 46, 47, 48, 49, 50, 51
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 51
+  };
+
+  final Set<int> numberIndices = {
+    1,2,3,4,5,6,7,9
+  };
+
+  final Set<int> saudacoesIndices = {
+    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50
   };
 
 
@@ -109,6 +121,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   @override
   void initState() {
     super.initState();
@@ -123,6 +136,7 @@ class _CameraScreenState extends State<CameraScreen> {
       _controller.setFlashMode(FlashMode.off);
 
 
+
       // --- Configuração do Zoom ---
       _maxAvailableZoom = await _controller.getMaxZoomLevel();
       _minAvailableZoom = await _controller.getMinZoomLevel();
@@ -131,12 +145,14 @@ class _CameraScreenState extends State<CameraScreen> {
       await _controller.setZoomLevel(_currentZoomLevel);
 
 
+
       _startSendingPictures();
       setState(() {});
     }).catchError((e) {
       print("Erro câmera: $e");
     });
   }
+
 
 
   @override
@@ -149,10 +165,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
+
 
 
       try {
@@ -162,12 +180,14 @@ class _CameraScreenState extends State<CameraScreen> {
         Uint8List finalImageBytes;
 
 
+
         if (originalImage != null) {
           img.Image resizedImage = img.copyResize(originalImage, width: 192, height: 192);
           finalImageBytes = Uint8List.fromList(img.encodeJpg(resizedImage, quality: 75));
         } else {
           finalImageBytes = originalImageBytes;
         }
+
 
 
         final uri = Uri.parse('http://148.230.76.27:5000/api/processar_imagem');
@@ -180,15 +200,18 @@ class _CameraScreenState extends State<CameraScreen> {
         ));
 
 
+
         final stopwatch = Stopwatch()..start();
         var response = await request.send();
         stopwatch.stop();
         print('⏱️ Tempo Total (Round Trip): ${stopwatch.elapsedMilliseconds} ms');
 
 
+
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
           var jsonResponse = jsonDecode(responseBody);
+
 
 
           if (jsonResponse['landmarks'] != null) {
@@ -210,6 +233,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   int _getDetectedHandCount(Float32List landmarks) {
     double sumLeft = 0;
     for(int i=0; i<63; i++) sumLeft += landmarks[i].abs();
@@ -220,6 +244,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (sumRight > 0.1) count++;
     return count;
   }
+
 
 
   // Função SIMPLIFICADA para extrair texto limpo do sinal
@@ -255,8 +280,10 @@ class _CameraScreenState extends State<CameraScreen> {
     if (interpreter == null) return;
 
 
+
     var input = landmarks.reshape([1, 126]);
     var output = List<List<double>>.filled(1, List<double>.filled(52, 0.0));
+
 
 
     try {
@@ -264,8 +291,10 @@ class _CameraScreenState extends State<CameraScreen> {
       var probabilities = output[0];
 
 
+
       int handsDetected = _getDetectedHandCount(landmarks);
       print('👋 Mãos detectadas: $handsDetected');
+
 
 
       // Filtro de mãos
@@ -285,6 +314,7 @@ class _CameraScreenState extends State<CameraScreen> {
       print('🎯 Predição: Índice $predictedIndex | Confiança: ${(confidence * 100).toStringAsFixed(1)}%');
 
 
+
       // Lógica de Substituição
       final int conhecerIndex = 40; 
       final int porfavorIndex = 43;
@@ -297,13 +327,16 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
 
+
       if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) _predictionHistory.removeAt(0);
 
 
+
         String finalResultName;
         int finalIndex;
+
 
 
         // Índices para lógica dinâmica e ambígua
@@ -327,9 +360,11 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isMeuNomeE = false;
 
 
+
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
           int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
 
 
           if (lastSignal == kIndex && currentSignal == twoIndex) isDynamicH = true;
@@ -404,6 +439,7 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
+
         // 🔥 LÓGICA SIMPLIFICADA: adiciona se for diferente do último sinal
         String extractedText = _extractSignText(finalResultName, finalIndex);
         
@@ -432,6 +468,7 @@ class _CameraScreenState extends State<CameraScreen> {
       print('Erro TFLite: $e');
     }
   }
+
 
 
   @override
@@ -475,8 +512,8 @@ class _CameraScreenState extends State<CameraScreen> {
                 ),
                 // --- BOTÃO PARA LIMPAR TEXTO ---
                 Positioned(
-                  left: 20,
-                  bottom: containerHeight + 10,
+                  left: 60,
+                  bottom: containerHeight + 40,
                   child: FloatingActionButton(
                     mini: true,
                     backgroundColor: Colors.red.withOpacity(0.8),
@@ -494,11 +531,11 @@ class _CameraScreenState extends State<CameraScreen> {
                 // --- TEXTO DE RESULTADO ---
                 Positioned(
                   bottom: 0,
-                  left: 0,
-                  right: 0,
+                  left: 30, // Aumentado de 0 para 30 - afasta do canto esquerdo
+                  right: 30, // Adicionado 30 - afasta do canto direito
                   child: Container(
                     height: containerHeight,
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0), // Aumentado padding
                     color: Colors.black87,
                     child: SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
