@@ -61,7 +61,7 @@ class _CameraScreenState extends State<CameraScreen> {
     37: "Sinal Idade", 38: "Sinal Obrigado", 39: "Sinal Você", 40: "Sinal Conhecer",
     41: "Sinal Licença", 42: "Sinal Abraço", 43: "Sinal Por Favor",
     44: "Sinal Horas", 45: "Sinal De Nada", 46: "Sinal Noite", 47: "Sinal Virgula",
-    48: "Sinal Onde", 49: "Sinal Até", 50: "Sinal Banheiro"
+    48: "Sinal Onde", 49: "Sinal Até", 50: "Sinal Banheiro", 51: "Letra Z",
   };
 
   // --- LISTAS DE CONTROLE DE MÃOS ---
@@ -78,12 +78,12 @@ class _CameraScreenState extends State<CameraScreen> {
 
   final Set<int> letterIndices = {
     10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
-    42, 43, 44, 45, 46, 47, 48, 49, 50
+    42, 43, 44, 45, 46, 47, 48, 49, 50, 51
   };
 
   Future<void> _loadModelFromBytes() async {
     try {
-      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_idade.tflite');
+      final ByteData bytes = await rootBundle.load('assets/libras_landmarks_126_ate_Z.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         setState(() { resultado = "Erro: Modelo vazio."; });
@@ -214,7 +214,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (interpreter == null) return;
 
     var input = landmarks.reshape([1, 126]);
-    var output = List<List<double>>.filled(1, List<double>.filled(51, 0.0)); // 51 classes
+    var output = List<List<double>>.filled(1, List<double>.filled(52, 0.0)); // 52 classes
 
     try {
       interpreter!.run(input, output);
