@@ -287,7 +287,7 @@ class _CameraScreenState extends State<CameraScreen> {
     ]);
     _loadModelFromBytes();
     _controller =
-        CameraController(widget.camera, ResolutionPreset.low, enableAudio: false);
+        CameraController(widget.camera, ResolutionPreset.medium, enableAudio: false);
     _initializeControllerFuture =
         _controller.initialize().then((_) async {
       if (!mounted) return;
