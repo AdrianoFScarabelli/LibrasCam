@@ -260,7 +260,7 @@ class _CameraScreenState extends State<CameraScreen> {
   Future<void> _loadModelFromBytes() async {
     try {
       final ByteData bytes =
-          await rootBundle.load('assets/libras_landmarks_126_ate_Z.tflite');
+          await rootBundle.load('assets/libras_landmarks_126_ate_Z_atualizado.tflite');
       final Uint8List modelBytes = bytes.buffer.asUint8List();
       if (modelBytes.isEmpty) {
         setState(() {
