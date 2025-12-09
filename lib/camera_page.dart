@@ -11,6 +11,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
 
 
+
 // Extensão para reshape
 extension on List<double> {
   List<List<double>> reshape(List<int> shape) {
@@ -26,12 +27,14 @@ extension on List<double> {
 }
 
 
+
 class CameraScreen extends StatefulWidget {
   final CameraDescription camera;
   const CameraScreen({super.key, required this.camera});
   @override
   _CameraScreenState createState() => _CameraScreenState();
 }
+
 
 
 class _CameraScreenState extends State<CameraScreen> {
@@ -45,9 +48,11 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isSendingPicture = false;
 
 
+
   int? _lastRecognizedIndex;
   final List<int> _predictionHistory = [];
   final int _historyLength = 5;
+
 
 
   int? _pendingSignalIndex;
@@ -56,13 +61,16 @@ class _CameraScreenState extends State<CameraScreen> {
   int _kConsecutiveCount = 0;
 
 
+
   final ScrollController _scrollController = ScrollController();
+
 
 
   // --- Variáveis de Zoom ---
   double _minAvailableZoom = 1.0;
   double _maxAvailableZoom = 1.0;
   double _currentZoomLevel = 1.0;
+
 
 
   // --- Mapeamento de rótulos (52 CLASSES: 0 a 51) ---
@@ -122,6 +130,7 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
 
+
   // --- LISTAS DE CONTROLE DE SINAIS ---
   final Set<int> oneHandedSignalIndices = {
     0,
@@ -167,12 +176,14 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
 
+
   final Set<int> twoHandedSignalIndices = {
     41,
     42,
     45,
     49,
   };
+
 
 
   final Set<int> letterIndices = {
@@ -202,10 +213,12 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
 
+
   final Set<int> numberIndices = {1, 2, 3, 4, 5, 6, 7, 9};
 
 
-  // Saudações e expressões comuns (incluindo Te Amo e Abraço)
+
+  // Saudações e expressões comuns
   final Set<int> saudacoesEExpressoesIndices = {
     10, // Te Amo
     33, // Oi
@@ -221,10 +234,12 @@ class _CameraScreenState extends State<CameraScreen> {
     43, // Por Favor
     44, // Horas
     45, // De Nada
+    46, // Noite
     48, // Onde
     49, // Até
     50, // Banheiro
   };
+
 
 
   final Set<String> letterCharacters = {
@@ -257,6 +272,7 @@ class _CameraScreenState extends State<CameraScreen> {
   };
 
 
+
   Future<void> _loadModelFromBytes() async {
     try {
       final ByteData bytes =
@@ -279,6 +295,7 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   @override
   void initState() {
     super.initState();
@@ -295,13 +312,16 @@ class _CameraScreenState extends State<CameraScreen> {
       _controller.setFlashMode(FlashMode.off);
 
 
+
       // --- Configuração do Zoom ---
       _maxAvailableZoom = await _controller.getMaxZoomLevel();
       _minAvailableZoom = await _controller.getMinZoomLevel();
 
 
+
       _currentZoomLevel = 1.8;
       await _controller.setZoomLevel(_currentZoomLevel);
+
 
 
       _startSendingPictures();
@@ -310,6 +330,7 @@ class _CameraScreenState extends State<CameraScreen> {
       print("Erro câmera: $e");
     });
   }
+
 
 
   @override
@@ -321,6 +342,7 @@ class _CameraScreenState extends State<CameraScreen> {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     super.dispose();
   }
+
 
 
   void _scrollToEnd() {
@@ -336,12 +358,15 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   bool _lastCharIsLetter() {
     if (_accumulatedText.isEmpty) return false;
 
 
+
     String trimmed = _accumulatedText.trimRight();
     if (trimmed.isEmpty) return false;
+
 
 
     String lastChar = trimmed[trimmed.length - 1].toUpperCase();
@@ -349,10 +374,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
       _isSendingPicture = true;
+
 
 
       try {
@@ -363,6 +390,7 @@ class _CameraScreenState extends State<CameraScreen> {
         Uint8List finalImageBytes;
 
 
+
         if (originalImage != null) {
           img.Image resizedImage =
               img.copyResize(originalImage, width: 224, height: 224);
@@ -371,6 +399,7 @@ class _CameraScreenState extends State<CameraScreen> {
         } else {
           finalImageBytes = originalImageBytes;
         }
+
 
 
         final uri =
@@ -384,15 +413,18 @@ class _CameraScreenState extends State<CameraScreen> {
         ));
 
 
+
         final stopwatch = Stopwatch()..start();
         var response = await request.send();
         stopwatch.stop();
         print('⏱️ Tempo Total (Round Trip): ${stopwatch.elapsedMilliseconds} ms');
 
 
+
         if (response.statusCode == 200) {
           var responseBody = await response.stream.bytesToString();
           var jsonResponse = jsonDecode(responseBody);
+
 
 
           if (jsonResponse['landmarks'] != null) {
@@ -416,10 +448,12 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   void _processPendingSignal() {
     if (_pendingSignalIndex != null && _pendingSignalName != null) {
       String extractedText =
           _extractSignText(_pendingSignalName!, _pendingSignalIndex!);
+
 
 
       if (extractedText != _lastAddedSignal) {
@@ -427,7 +461,9 @@ class _CameraScreenState extends State<CameraScreen> {
         _lastAddedSignal = extractedText;
 
 
+
         print('✅ SINAL PENDENTE ADICIONADO: "$extractedText"');
+
 
 
         if (mounted) {
@@ -440,10 +476,12 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
 
+
       _pendingSignalIndex = null;
       _pendingSignalName = null;
     }
   }
+
 
 
   int _getDetectedHandCount(Float32List landmarks) {
@@ -456,6 +494,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (sumRight > 0.1) count++;
     return count;
   }
+
 
 
   // Helper para ajustar maiúscula/minúscula da primeira letra de saudações/expressões
@@ -472,8 +511,10 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   String _extractSignText(String signalName, int signalIndex) {
     String baseText = "";
+
 
 
     // Número 9 com espaço
@@ -524,6 +565,10 @@ class _CameraScreenState extends State<CameraScreen> {
     else if (signalName == "O meu nome é ") {
       baseText = _applySentenceCase("o meu nome é ");
     }
+    // Sinal Obrigado - aplica sentence case
+    else if (signalName == "Sinal Obrigado") {
+      baseText = _applySentenceCase("obrigado");
+    }
     // Sinal Licença → "Com Licença"
     else if (signalName == "Sinal Licença") {
       baseText = _applySentenceCase("com licença");
@@ -540,7 +585,7 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Ponto de Exclamação") {
       baseText = "!";
     }
-    // Outros sinais simples (Oi, Joia, Desculpa, Obrigado, De Nada, etc)
+    // Outros sinais simples (Oi, Joia, Desculpa, De Nada, etc)
     else if (signalName.contains("Sinal ")) {
       String cleanName = signalName.replaceAll("Sinal ", "").split("/")[0].trim();
       baseText = _applySentenceCase(cleanName.toLowerCase());
@@ -549,25 +594,32 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
 
+
     return baseText;
   }
+
 
 
   void _runInference(Float32List landmarks) {
     if (interpreter == null) return;
 
 
+
     var input = landmarks.reshape([1, 126]);
     var output = List<List<double>>.filled(1, List<double>.filled(52, 0.0));
+
 
 
     try {
       interpreter!.run(input, output);
       var probabilities = output[0];
 
+      // DESABILITA "Que horas são" (índice 44)
+      probabilities[44] = 0.0;
 
       int handsDetected = _getDetectedHandCount(landmarks);
       print('👋 Mãos detectadas: $handsDetected');
+
 
 
       // Filtro de mãos
@@ -586,13 +638,16 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
 
+
       var predictedIndex = probabilities.indexOf(
           probabilities.reduce((curr, next) => curr > next ? curr : next));
       var confidence = probabilities[predictedIndex];
 
 
+
       print(
           '🎯 Predição: Índice $predictedIndex | Confiança: ${(confidence * 100).toStringAsFixed(1)}%');
+
 
 
       // Lógica de Substituição para Conhecer/Por favor baseada em número de mãos
@@ -609,6 +664,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
 
 
+
       if (confidence > 0.55) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) {
@@ -616,8 +672,10 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
+
         String finalResultName;
         int finalIndex;
+
 
 
         // Índices para lógica dinâmica e ambígua
@@ -640,6 +698,7 @@ class _CameraScreenState extends State<CameraScreen> {
         final int banheiroIndex = 50;
 
 
+
         bool isDynamicH = false;
         bool isDynamicJ = false;
         bool isTudoBem = false;
@@ -656,9 +715,11 @@ class _CameraScreenState extends State<CameraScreen> {
         bool shouldSkipAdding = false;
 
 
+
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
           int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
 
 
           if (lastSignal == kIndex && currentSignal == twoIndex) {
@@ -684,10 +745,12 @@ class _CameraScreenState extends State<CameraScreen> {
           }
 
 
+
           // Ponto Final (Você + F = ".")
           if (lastSignal == voceIndex && currentSignal == fIndex) {
             isPontoFinal = true;
           }
+
 
 
           // Ponto de Exclamação (Z + Você = "!")
@@ -696,10 +759,12 @@ class _CameraScreenState extends State<CameraScreen> {
           }
 
 
+
           // Até amanhã (Até + Conhecer)
           if (lastSignal == ateIndex && currentSignal == conhecerIndex) {
             isAteAmanha = true;
           }
+
 
 
           // Onde é o banheiro (Onde + Banheiro)
@@ -709,11 +774,13 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
+
         // Verifica sequência de 3 sinais (Bom + Conhecer + Você)
         if (_predictionHistory.length >= 3) {
           int thirdLast = _predictionHistory[_predictionHistory.length - 3];
           int secondLast = _predictionHistory[_predictionHistory.length - 2];
           int lastSignal = _predictionHistory[_predictionHistory.length - 1];
+
 
 
           if (thirdLast == bomIndex &&
@@ -724,10 +791,12 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
+
         // Boa tarde = Bom + Conhecer (não deve interferir com Prazer)
         if (_predictionHistory.length >= 2) {
           int lastSignal = _predictionHistory[_predictionHistory.length - 2];
           int currentSignal = _predictionHistory[_predictionHistory.length - 1];
+
 
 
           if (lastSignal == bomIndex &&
@@ -736,6 +805,7 @@ class _CameraScreenState extends State<CameraScreen> {
             isBoaTarde = true;
           }
         }
+
 
 
         if (isDynamicH) {
@@ -820,9 +890,11 @@ class _CameraScreenState extends State<CameraScreen> {
           _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (predictedIndex == horasIndex) {
-          finalResultName = "Que horas são";
-          finalIndex = -13;
-          _processPendingSignal();
+          // "Que horas são" DESABILITADO - ignora
+          print('⏭️ "Que horas são" detectado mas está desabilitado');
+          shouldSkipAdding = true;
+          finalResultName = "";
+          finalIndex = horasIndex;
         } else if (predictedIndex == idadeIndex) {
           finalResultName = "Quantos anos você tem";
           finalIndex = -14;
@@ -838,6 +910,7 @@ class _CameraScreenState extends State<CameraScreen> {
             _processPendingSignal();
 
 
+
             _pendingSignalIndex = twoIndex;
             _pendingSignalName = "Número 2";
             print(
@@ -847,14 +920,25 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = twoIndex;
           }
         } else if (predictedIndex == bomIndex) {
-          _processPendingSignal();
+          // Verifica se o sinal anterior foi bomIndex também
+          // Se sim, escreve "Obrigado" na primeira vez
+          if (_pendingSignalIndex == bomIndex) {
+            finalResultName = "Sinal Obrigado";
+            finalIndex = bomIndex;
+            _predictionHistory.clear();
+            _pendingSignalIndex = null;
+            _pendingSignalName = null;
+          } else {
+            _processPendingSignal();
 
-
-          print(
-              '⏸️ "Bom" detectado, aguardando composição (dia/tarde/noite/prazer)...');
-          shouldSkipAdding = true;
-          finalResultName = "";
-          finalIndex = bomIndex;
+            print(
+                '⏸️ "Obrigado/Bom" detectado, aguardando composição (dia/tarde/noite/tudo bem)...');
+            _pendingSignalIndex = bomIndex;
+            _pendingSignalName = "Sinal Obrigado";
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = bomIndex;
+          }
         } else if (predictedIndex == conhecerIndex && handsDetected == 1) {
           print(
               '⏸️ "Conhecer" (1 mão) detectado, aguardando composição (tarde/prazer/até amanhã)...');
@@ -873,6 +957,16 @@ class _CameraScreenState extends State<CameraScreen> {
           shouldSkipAdding = true;
           finalResultName = "";
           finalIndex = ateIndex;
+        }
+        // Joia: não adiciona sozinho (só aparece em "Tudo bem")
+        else if (predictedIndex == joiaIndex) {
+          _processPendingSignal();
+
+          print(
+              '⏭️ "Joia" detectado sozinho, ignorando (só aparece em "Tudo bem")');
+          shouldSkipAdding = true;
+          finalResultName = "";
+          finalIndex = joiaIndex;
         }
         // Onde: não adiciona sozinho (parte de "onde é o banheiro")
         else if (predictedIndex == ondeIndex) {
@@ -893,6 +987,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _processPendingSignal();
 
 
+
           print(
               '⏭️ "Noite" detectado sozinho, ignorando (só aparece em "Boa noite")');
           shouldSkipAdding = true;
@@ -901,6 +996,7 @@ class _CameraScreenState extends State<CameraScreen> {
         } else if (predictedIndex == kIndex) {
           _kConsecutiveCount++;
           print('🔤 K detectado $_kConsecutiveCount vez(es) consecutivas');
+
 
 
           if (_kConsecutiveCount >= 2) {
@@ -918,6 +1014,7 @@ class _CameraScreenState extends State<CameraScreen> {
           print('🔤 Z detectado $_zConsecutiveCount vez(es) consecutivas');
 
 
+
           if (_zConsecutiveCount >= 2) {
             finalResultName = "Letra Z";
             finalIndex = zIndex;
@@ -932,6 +1029,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _zConsecutiveCount = 0;
           _kConsecutiveCount = 0;
           _processPendingSignal();
+
 
 
           if (_lastCharIsLetter()) {
@@ -951,6 +1049,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _processPendingSignal();
 
 
+
           if (_lastCharIsLetter()) {
             finalResultName = "Letra S (Contexto)";
             finalIndex = 8;
@@ -968,6 +1067,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _processPendingSignal();
 
 
+
           if (predictedIndex == porfavorIndex) {
             finalResultName = "Por Favor";
           } else {
@@ -978,9 +1078,11 @@ class _CameraScreenState extends State<CameraScreen> {
         }
 
 
+
         if (!shouldSkipAdding && finalResultName.isNotEmpty) {
           String extractedText =
               _extractSignText(finalResultName, finalIndex);
+
 
 
           print(
@@ -989,7 +1091,9 @@ class _CameraScreenState extends State<CameraScreen> {
               '📋 Último sinal adicionado: "$_lastAddedSignal"');
 
 
+
           bool canAdd = extractedText != _lastAddedSignal;
+
 
 
           // Exceção: Se for Conhecer/Por favor, sempre permite adicionar
@@ -1000,13 +1104,16 @@ class _CameraScreenState extends State<CameraScreen> {
           }
 
 
+
           if (canAdd) {
             _accumulatedText += extractedText;
             _lastAddedSignal = extractedText;
 
 
+
             print(
                 '✅ ADICIONADO! Texto acumulado agora: "$_accumulatedText"');
+
 
 
             if (mounted) {
@@ -1031,12 +1138,14 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
 
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
     final screenHeight = screenSize.height;
     final resultFontSize = screenHeight * 0.06;
     final containerHeight = screenHeight * 0.20;
+
 
 
     return Scaffold(
