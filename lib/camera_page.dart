@@ -577,6 +577,10 @@ class _CameraScreenState extends State<CameraScreen> {
     else if (signalName == "Sinal Abraço") {
       baseText = _applySentenceCase("abraço");
     }
+    // Sinal Por Favor - aplica sentence case
+    else if (signalName == "Sinal Por Favor") {
+      baseText = _applySentenceCase("por favor");
+    }
     // Pontuações
     else if (signalName == "Ponto Final") {
       baseText = ".";
@@ -650,17 +654,37 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
-      // Lógica de Substituição para Conhecer/Por favor baseada em número de mãos
+      // Lógica MELHORADA de Substituição para Conhecer/Por favor
       final int conhecerIndex = 40;
       final int porfavorIndex = 43;
+      
+      // Compara as probabilidades de ambos os sinais
+      double conhecerConfidence = probabilities[conhecerIndex];
+      double porfavorConfidence = probabilities[porfavorIndex];
+      
+      print('📊 Confiança Conhecer: ${(conhecerConfidence * 100).toStringAsFixed(1)}% | Por Favor: ${(porfavorConfidence * 100).toStringAsFixed(1)}%');
+      
+      // Se detectou Por Favor com 1 mão, verifica se realmente deve trocar para Conhecer
       if (predictedIndex == porfavorIndex && handsDetected == 1) {
-        predictedIndex = conhecerIndex;
-        confidence = probabilities[conhecerIndex];
-        print('🔄 Por favor → Conhecer (1 mão detectada)');
-      } else if (predictedIndex == conhecerIndex && handsDetected == 2) {
-        predictedIndex = porfavorIndex;
-        confidence = probabilities[porfavorIndex];
-        print('🔄 Conhecer → Por favor (2 mãos detectadas)');
+        // Só troca se Conhecer tiver confiança significativamente maior (diferença > 15%)
+        if (conhecerConfidence > porfavorConfidence && (conhecerConfidence - porfavorConfidence) > 0.15) {
+          predictedIndex = conhecerIndex;
+          confidence = conhecerConfidence;
+          print('🔄 Por favor → Conhecer (1 mão + confiança maior)');
+        } else {
+          print('✅ Mantém Por Favor (confiança similar ou maior)');
+        }
+      } 
+      // Se detectou Conhecer com 2 mãos, verifica se realmente deve trocar para Por Favor
+      else if (predictedIndex == conhecerIndex && handsDetected == 2) {
+        // Só troca se Por Favor tiver confiança significativamente maior (diferença > 15%)
+        if (porfavorConfidence > conhecerConfidence && (porfavorConfidence - conhecerConfidence) > 0.15) {
+          predictedIndex = porfavorIndex;
+          confidence = porfavorConfidence;
+          print('🔄 Conhecer → Por favor (2 mãos + confiança maior)');
+        } else {
+          print('✅ Mantém Conhecer (confiança similar ou maior)');
+        }
       }
 
 
@@ -920,19 +944,17 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = twoIndex;
           }
         } else if (predictedIndex == bomIndex) {
-          // Verifica se o sinal anterior foi bomIndex também
-          // Se sim, escreve "Obrigado" na primeira vez
+          // Nova lógica: Obrigado fica pendente, só escreve quando não detectar mão
           if (_pendingSignalIndex == bomIndex) {
-            finalResultName = "Sinal Obrigado";
+            // Já estava pendente, mas detectou novamente - aguarda
+            print('⏸️ "Obrigado" detectado novamente, ainda aguardando...');
+            shouldSkipAdding = true;
+            finalResultName = "";
             finalIndex = bomIndex;
-            _predictionHistory.clear();
-            _pendingSignalIndex = null;
-            _pendingSignalName = null;
           } else {
             _processPendingSignal();
 
-            print(
-                '⏸️ "Obrigado/Bom" detectado, aguardando composição (dia/tarde/noite/tudo bem)...');
+            print('⏸️ "Obrigado/Bom" detectado pela primeira vez, aguardando composição ou ausência de mão...');
             _pendingSignalIndex = bomIndex;
             _pendingSignalName = "Sinal Obrigado";
             shouldSkipAdding = true;
@@ -1069,7 +1091,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
           if (predictedIndex == porfavorIndex) {
-            finalResultName = "Por Favor";
+            finalResultName = "Sinal Por Favor";
           } else {
             finalResultName =
                 classMapping[predictedIndex] ?? "Desconhecido";
