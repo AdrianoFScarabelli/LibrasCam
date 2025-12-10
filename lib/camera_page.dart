@@ -548,8 +548,9 @@ class _CameraScreenState extends State<CameraScreen> {
       baseText = _applySentenceCase("boa noite");
     } else if (signalName == "Prazer em conhecer você") {
       baseText = _applySentenceCase("prazer em conhecer você");
-    } else if (signalName == "Até amanhã") {
-      baseText = _applySentenceCase("até amanhã");
+    } else if (signalName == "Amanhã após Até") {
+      // Novo caso especial para quando vier Conhecer depois de Até
+      baseText = "amanhã";
     }
     // Perguntas (com espaço depois do "?")
     else if (signalName == "Qual é o seu nome") {
@@ -576,10 +577,6 @@ class _CameraScreenState extends State<CameraScreen> {
     // Sinal Abraço - aplica sentence case
     else if (signalName == "Sinal Abraço") {
       baseText = _applySentenceCase("abraço");
-    }
-    // Sinal Por Favor - aplica sentence case
-    else if (signalName == "Sinal Por Favor") {
-      baseText = _applySentenceCase("por favor");
     }
     // Pontuações
     else if (signalName == "Ponto Final") {
@@ -654,37 +651,17 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
-      // Lógica MELHORADA de Substituição para Conhecer/Por favor
+      // Lógica de Substituição para Conhecer/Por favor baseada em número de mãos
       final int conhecerIndex = 40;
       final int porfavorIndex = 43;
-      
-      // Compara as probabilidades de ambos os sinais
-      double conhecerConfidence = probabilities[conhecerIndex];
-      double porfavorConfidence = probabilities[porfavorIndex];
-      
-      print('📊 Confiança Conhecer: ${(conhecerConfidence * 100).toStringAsFixed(1)}% | Por Favor: ${(porfavorConfidence * 100).toStringAsFixed(1)}%');
-      
-      // Se detectou Por Favor com 1 mão, verifica se realmente deve trocar para Conhecer
       if (predictedIndex == porfavorIndex && handsDetected == 1) {
-        // Só troca se Conhecer tiver confiança significativamente maior (diferença > 15%)
-        if (conhecerConfidence > porfavorConfidence && (conhecerConfidence - porfavorConfidence) > 0.15) {
-          predictedIndex = conhecerIndex;
-          confidence = conhecerConfidence;
-          print('🔄 Por favor → Conhecer (1 mão + confiança maior)');
-        } else {
-          print('✅ Mantém Por Favor (confiança similar ou maior)');
-        }
-      } 
-      // Se detectou Conhecer com 2 mãos, verifica se realmente deve trocar para Por Favor
-      else if (predictedIndex == conhecerIndex && handsDetected == 2) {
-        // Só troca se Por Favor tiver confiança significativamente maior (diferença > 15%)
-        if (porfavorConfidence > conhecerConfidence && (porfavorConfidence - conhecerConfidence) > 0.15) {
-          predictedIndex = porfavorIndex;
-          confidence = porfavorConfidence;
-          print('🔄 Conhecer → Por favor (2 mãos + confiança maior)');
-        } else {
-          print('✅ Mantém Conhecer (confiança similar ou maior)');
-        }
+        predictedIndex = conhecerIndex;
+        confidence = probabilities[conhecerIndex];
+        print('🔄 Por favor → Conhecer (1 mão detectada)');
+      } else if (predictedIndex == conhecerIndex && handsDetected == 2) {
+        predictedIndex = porfavorIndex;
+        confidence = probabilities[porfavorIndex];
+        print('🔄 Conhecer → Por favor (2 mãos detectadas)');
       }
 
 
@@ -710,6 +687,7 @@ class _CameraScreenState extends State<CameraScreen> {
         final int bomIndex = 38;
         final int joiaIndex = 35;
         final int dIndex = 14;
+        final int olaIndex = 34;
         final int noiteIndex = 46;
         final int uIndex = 28;
         final int zIndex = 51;
@@ -734,7 +712,7 @@ class _CameraScreenState extends State<CameraScreen> {
         bool isPontoFinal = false;
         bool isPontoExclamacao = false;
         bool isPrazerConhecerVoce = false;
-        bool isAteAmanha = false;
+        bool isAmanhaAposAte = false;
         bool isOndeEoBanheiro = false;
         bool shouldSkipAdding = false;
 
@@ -757,6 +735,10 @@ class _CameraScreenState extends State<CameraScreen> {
           }
           if (lastSignal == bomIndex && currentSignal == dIndex) {
             isBomDia = true;
+          }
+          // NOVA LÓGICA: Boa Tarde = Bom + Olá
+          if (lastSignal == bomIndex && currentSignal == olaIndex) {
+            isBoaTarde = true;
           }
           if (lastSignal == bomIndex && currentSignal == noiteIndex) {
             isBoaNoite = true;
@@ -784,9 +766,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
 
-          // Até amanhã (Até + Conhecer)
+          // NOVA LÓGICA: Conhecer após Até = "amanhã"
           if (lastSignal == ateIndex && currentSignal == conhecerIndex) {
-            isAteAmanha = true;
+            isAmanhaAposAte = true;
           }
 
 
@@ -811,22 +793,6 @@ class _CameraScreenState extends State<CameraScreen> {
               secondLast == conhecerIndex &&
               lastSignal == voceIndex) {
             isPrazerConhecerVoce = true;
-          }
-        }
-
-
-
-        // Boa tarde = Bom + Conhecer (não deve interferir com Prazer)
-        if (_predictionHistory.length >= 2) {
-          int lastSignal = _predictionHistory[_predictionHistory.length - 2];
-          int currentSignal = _predictionHistory[_predictionHistory.length - 1];
-
-
-
-          if (lastSignal == bomIndex &&
-              currentSignal == conhecerIndex &&
-              !isPrazerConhecerVoce) {
-            isBoaTarde = true;
           }
         }
 
@@ -899,8 +865,9 @@ class _CameraScreenState extends State<CameraScreen> {
           _pendingSignalIndex = null;
           _pendingSignalName = null;
           _zConsecutiveCount = 0;
-        } else if (isAteAmanha) {
-          finalResultName = "Até amanhã";
+        } else if (isAmanhaAposAte) {
+          // NOVA LÓGICA: "amanhã" após "até"
+          finalResultName = "Amanhã após Até";
           finalIndex = -12;
           _predictionHistory.clear();
           _pendingSignalIndex = null;
@@ -944,17 +911,19 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = twoIndex;
           }
         } else if (predictedIndex == bomIndex) {
-          // Nova lógica: Obrigado fica pendente, só escreve quando não detectar mão
+          // Verifica se o sinal anterior foi bomIndex também
+          // Se sim, escreve "Obrigado" na primeira vez
           if (_pendingSignalIndex == bomIndex) {
-            // Já estava pendente, mas detectou novamente - aguarda
-            print('⏸️ "Obrigado" detectado novamente, ainda aguardando...');
-            shouldSkipAdding = true;
-            finalResultName = "";
+            finalResultName = "Sinal Obrigado";
             finalIndex = bomIndex;
+            _predictionHistory.clear();
+            _pendingSignalIndex = null;
+            _pendingSignalName = null;
           } else {
             _processPendingSignal();
 
-            print('⏸️ "Obrigado/Bom" detectado pela primeira vez, aguardando composição ou ausência de mão...');
+            print(
+                '⏸️ "Obrigado/Bom" detectado, aguardando composição (dia/tarde/noite/tudo bem)...');
             _pendingSignalIndex = bomIndex;
             _pendingSignalName = "Sinal Obrigado";
             shouldSkipAdding = true;
@@ -962,11 +931,19 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = bomIndex;
           }
         } else if (predictedIndex == conhecerIndex && handsDetected == 1) {
-          print(
-              '⏸️ "Conhecer" (1 mão) detectado, aguardando composição (tarde/prazer/até amanhã)...');
-          shouldSkipAdding = true;
-          finalResultName = "";
-          finalIndex = conhecerIndex;
+          // Verifica se o último sinal reconhecido foi "Até"
+          if (_lastRecognizedIndex == ateIndex) {
+            // Se sim, adiciona "amanhã"
+            finalResultName = "Amanhã após Até";
+            finalIndex = -12;
+            _processPendingSignal();
+          } else {
+            print(
+                '⏸️ "Conhecer" (1 mão) detectado, aguardando composição (prazer)...');
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = conhecerIndex;
+          }
         } else if (predictedIndex == voceIndex) {
           print(
               '⏸️ "Você" detectado, aguardando composição (ponto final/exclamação/prazer)...');
@@ -974,11 +951,10 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "";
           finalIndex = voceIndex;
         } else if (predictedIndex == ateIndex) {
-          print(
-              '⏸️ "Até" detectado, aguardando composição (até amanhã)...');
-          shouldSkipAdding = true;
-          finalResultName = "";
+          // NOVA LÓGICA: Até pode aparecer sozinho agora
+          finalResultName = "Sinal Até";
           finalIndex = ateIndex;
+          _processPendingSignal();
         }
         // Joia: não adiciona sozinho (só aparece em "Tudo bem")
         else if (predictedIndex == joiaIndex) {
@@ -989,6 +965,12 @@ class _CameraScreenState extends State<CameraScreen> {
           shouldSkipAdding = true;
           finalResultName = "";
           finalIndex = joiaIndex;
+        }
+        // Olá: permite aparecer sozinho, mas também compõe "Boa tarde"
+        else if (predictedIndex == olaIndex) {
+          _processPendingSignal();
+          finalResultName = "Sinal Olá/Tchau";
+          finalIndex = olaIndex;
         }
         // Onde: não adiciona sozinho (parte de "onde é o banheiro")
         else if (predictedIndex == ondeIndex) {
@@ -1091,7 +1073,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
 
           if (predictedIndex == porfavorIndex) {
-            finalResultName = "Sinal Por Favor";
+            finalResultName = "Por Favor";
           } else {
             finalResultName =
                 classMapping[predictedIndex] ?? "Desconhecido";
