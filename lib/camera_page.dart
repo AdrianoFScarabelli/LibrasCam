@@ -243,6 +243,19 @@ class _CameraScreenState extends State<CameraScreen> {
     'Z'
   };
 
+  final Set<String> digitCharacters = {
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9'
+  };
+
   Future<void> _loadModelFromBytes() async {
     try {
       final ByteData bytes =
@@ -325,6 +338,16 @@ class _CameraScreenState extends State<CameraScreen> {
     return letterCharacters.contains(lastChar);
   }
 
+  bool _lastCharIsDigit() {
+    if (_accumulatedText.isEmpty) return false;
+
+    String trimmed = _accumulatedText.trimRight();
+    if (trimmed.isEmpty) return false;
+
+    String lastChar = trimmed[trimmed.length - 1];
+    return digitCharacters.contains(lastChar);
+  }
+
   void _startSendingPictures() {
     _timer = Timer.periodic(const Duration(milliseconds: 1000), (timer) async {
       if (!_controller.value.isInitialized || _isSendingPicture) return;
@@ -376,9 +399,14 @@ class _CameraScreenState extends State<CameraScreen> {
             print('🚫 Nenhuma mão detectada pela API');
             _processPendingSignal();
           }
+        } else {
+          // resposta != 200 também é tratado como "sem sinal" para a lógica de Obrigado
+          print('⚠️ Resposta HTTP != 200');
+          _processPendingSignal();
         }
       } catch (e) {
         print('Erro: $e');
+        _processPendingSignal();
       } finally {
         _isSendingPicture = false;
       }
@@ -387,10 +415,34 @@ class _CameraScreenState extends State<CameraScreen> {
 
   void _processPendingSignal() {
     if (_pendingSignalIndex != null && _pendingSignalName != null) {
+      final int bomIndex = 38;
+      if (_pendingSignalIndex == bomIndex && _pendingSignalName == "Sinal Obrigado") {
+        String extractedText =
+            _extractSignText(_pendingSignalName!, _pendingSignalIndex!);
+
+        if (extractedText.isNotEmpty && extractedText != _lastAddedSignal) {
+          _accumulatedText += extractedText;
+          _lastAddedSignal = extractedText;
+          print('✅ SINAL OBRIGADO ADICIONADO APÓS NENHUMA MÃO: "$extractedText"');
+
+          if (mounted) {
+            setState(() {
+              resultado = _accumulatedText;
+              _lastRecognizedIndex = _pendingSignalIndex;
+            });
+            _scrollToEnd();
+          }
+        }
+
+        _pendingSignalIndex = null;
+        _pendingSignalName = null;
+        return;
+      }
+
       String extractedText =
           _extractSignText(_pendingSignalName!, _pendingSignalIndex!);
 
-      if (extractedText != _lastAddedSignal) {
+      if (extractedText.isNotEmpty && extractedText != _lastAddedSignal) {
         _accumulatedText += extractedText;
         _lastAddedSignal = extractedText;
 
@@ -441,8 +493,34 @@ class _CameraScreenState extends State<CameraScreen> {
     if (signalIndex == 9) {
       baseText = "9 ";
     }
-    // Números (0-8)
-    else if (signalIndex >= 0 && signalIndex <= 8) {
+    // CASOS ESPECIAIS 0/O E 8/S
+    else if (signalIndex == 0) {
+      if (_accumulatedText.trim().isEmpty || _lastCharIsDigit()) {
+        baseText = "0";
+      } else if (_lastCharIsLetter()) {
+        if (signalName.contains("Letra O")) {
+          baseText = "O";
+        } else {
+          baseText = "0";
+        }
+      } else {
+        baseText = "";
+      }
+    } else if (signalIndex == 8) {
+      if (_accumulatedText.trim().isEmpty || _lastCharIsDigit()) {
+        baseText = "8";
+      } else if (_lastCharIsLetter()) {
+        if (signalName.contains("Letra S")) {
+          baseText = "S";
+        } else {
+          baseText = "8";
+        }
+      } else {
+        baseText = "";
+      }
+    }
+    // Números (1-7)
+    else if (signalIndex >= 1 && signalIndex <= 7) {
       baseText = signalIndex.toString();
     }
     // Te Amo - aplica sentence case
@@ -469,10 +547,9 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Prazer em conhecer você") {
       baseText = _applySentenceCase("prazer em conhecer você");
     } else if (signalName == "Amanhã após Até") {
-      // Novo caso especial para quando vier Conhecer depois de Até
       baseText = "amanhã";
     }
-    // Perguntas (com espaço depois do "?")
+    // Perguntas
     else if (signalName == "Qual é o seu nome") {
       baseText = _applySentenceCase("qual é o seu nome?") + " ";
     } else if (signalName == "Que horas são") {
@@ -482,19 +559,19 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Onde é o banheiro") {
       baseText = _applySentenceCase("onde é o banheiro?") + " ";
     }
-    // "O meu nome é " - precisa do espaço no final
+    // "O meu nome é "
     else if (signalName == "O meu nome é ") {
       baseText = _applySentenceCase("o meu nome é ");
     }
-    // Sinal Obrigado - aplica sentence case
+    // Sinal Obrigado
     else if (signalName == "Sinal Obrigado") {
       baseText = _applySentenceCase("obrigado");
     }
-    // Sinal Licença → "Com Licença"
+    // Sinal Licença → "Com licença"
     else if (signalName == "Sinal Licença") {
       baseText = _applySentenceCase("com licença");
     }
-    // Sinal Abraço - aplica sentence case
+    // Sinal Abraço
     else if (signalName == "Sinal Abraço") {
       baseText = _applySentenceCase("abraço");
     }
@@ -506,7 +583,7 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Ponto de Exclamação") {
       baseText = "!";
     }
-    // Outros sinais simples (Oi, Joia, Desculpa, De Nada, etc)
+    // Outros sinais simples
     else if (signalName.contains("Sinal ")) {
       String cleanName = signalName.replaceAll("Sinal ", "").split("/")[0].trim();
       baseText = _applySentenceCase(cleanName.toLowerCase());
@@ -527,27 +604,21 @@ class _CameraScreenState extends State<CameraScreen> {
       interpreter!.run(input, output);
       var probabilities = output[0];
 
-      // DESABILITA "Que horas são" (índice 44)
+      // DESABILITA "Que horas são" (44) e Conhecer (40)
       probabilities[44] = 0.0;
+      probabilities[40] = 0.0;
 
       int handsDetected = _getDetectedHandCount(landmarks);
       print('👋 Mãos detectadas: $handsDetected');
 
-      // NOVO filtro baseado em quantidade de mãos para Até (49) e Conhecer (40)
       if (handsDetected == 1) {
-        // zera sinais de duas mãos
         for (int index in twoHandedSignalIndices) {
           probabilities[index] = 0.0;
         }
-        // com 1 mão, NÃO permitir "Até"
-        probabilities[49] = 0.0;
       } else if (handsDetected == 2) {
-        // zera sinais de uma mão
         for (int index in oneHandedSignalIndices) {
           probabilities[index] = 0.0;
         }
-        // com 2 mãos, NÃO permitir "Conhecer"
-        probabilities[40] = 0.0;
       } else {
         print('⚠️ Nenhuma mão válida detectada');
         _processPendingSignal();
@@ -561,20 +632,10 @@ class _CameraScreenState extends State<CameraScreen> {
       print(
           '🎯 Predição: Índice $predictedIndex | Confiança: ${(confidence * 100).toStringAsFixed(1)}%');
 
-      // Lógica de Substituição para Conhecer/Por favor baseada em número de mãos
-      final int conhecerIndex = 40;
+      final int conhecerIndex = 40; // agora desativado, só para manter compatibilidade
       final int porfavorIndex = 43;
-      if (predictedIndex == porfavorIndex && handsDetected == 1) {
-        predictedIndex = conhecerIndex;
-        confidence = probabilities[conhecerIndex];
-        print('🔄 Por favor → Conhecer (1 mão detectada)');
-      } else if (predictedIndex == conhecerIndex && handsDetected == 2) {
-        predictedIndex = porfavorIndex;
-        confidence = probabilities[porfavorIndex];
-        print('🔄 Conhecer → Por favor (2 mãos detectadas)');
-      }
 
-      if (confidence > 0.80) {  //Estava para ser maior que 0.55 de acurácia
+      if (confidence > 0.80) {
         _predictionHistory.add(predictedIndex);
         if (_predictionHistory.length > _historyLength) {
           _predictionHistory.removeAt(0);
@@ -602,6 +663,7 @@ class _CameraScreenState extends State<CameraScreen> {
         final int idadeIndex = 37;
         final int ondeIndex = 48;
         final int banheiroIndex = 50;
+        final int numeroSeisIndex = 6;
 
         bool isDynamicH = false;
         bool isDynamicJ = false;
@@ -628,13 +690,17 @@ class _CameraScreenState extends State<CameraScreen> {
           if (lastSignal == iIndex && currentSignal == jIndex) {
             isDynamicJ = true;
           }
+          // Tudo bem = Bom + Joia (lógica antiga)
           if (lastSignal == bomIndex && currentSignal == joiaIndex) {
+            isTudoBem = true;
+          }
+          // Tudo bem = Obrigado + Número 6 (nova lógica)
+          if (lastSignal == bomIndex && currentSignal == numeroSeisIndex) {
             isTudoBem = true;
           }
           if (lastSignal == bomIndex && currentSignal == dIndex) {
             isBomDia = true;
           }
-          // Boa Tarde = Bom + Olá
           if (lastSignal == bomIndex && currentSignal == olaIndex) {
             isBoaTarde = true;
           }
@@ -647,29 +713,20 @@ class _CameraScreenState extends State<CameraScreen> {
           if (lastSignal == twoIndex && currentSignal == twoIndex) {
             isMeuNomeE = true;
           }
-
-          // Ponto Final (Você + F = ".")
           if (lastSignal == voceIndex && currentSignal == fIndex) {
             isPontoFinal = true;
           }
-
-          // Ponto de Exclamação (Z + Você = "!")
           if (lastSignal == zIndex && currentSignal == voceIndex) {
             isPontoExclamacao = true;
           }
-
-          // Conhecer após Até = "amanhã"
           if (lastSignal == ateIndex && currentSignal == conhecerIndex) {
             isAmanhaAposAte = true;
           }
-
-          // Onde é o banheiro (Onde + Banheiro)
           if (lastSignal == ondeIndex && currentSignal == banheiroIndex) {
             isOndeEoBanheiro = true;
           }
         }
 
-        // Verifica sequência de 3 sinais (Bom + Conhecer + Você)
         if (_predictionHistory.length >= 3) {
           int thirdLast = _predictionHistory[_predictionHistory.length - 3];
           int secondLast = _predictionHistory[_predictionHistory.length - 2];
@@ -750,22 +807,18 @@ class _CameraScreenState extends State<CameraScreen> {
           _pendingSignalName = null;
           _zConsecutiveCount = 0;
         } else if (isAmanhaAposAte) {
-          // "amanhã" após "até"
           finalResultName = "Amanhã após Até";
           finalIndex = -12;
           _predictionHistory.clear();
           _pendingSignalIndex = null;
           _pendingSignalName = null;
-        }
-        // Onde é o banheiro
-        else if (isOndeEoBanheiro) {
+        } else if (isOndeEoBanheiro) {
           finalResultName = "Onde é o banheiro";
           finalIndex = -15;
           _predictionHistory.clear();
           _pendingSignalIndex = null;
           _pendingSignalName = null;
         } else if (predictedIndex == horasIndex) {
-          // "Que horas são" DESABILITADO - ignora
           print('⏭️ "Que horas são" detectado mas está desabilitado');
           shouldSkipAdding = true;
           finalResultName = "";
@@ -783,48 +836,34 @@ class _CameraScreenState extends State<CameraScreen> {
             _pendingSignalName = null;
           } else {
             _processPendingSignal();
-
             _pendingSignalIndex = twoIndex;
             _pendingSignalName = "Número 2";
-            print(
-                '⏸️ Número 2 ficou PENDENTE, aguardando próximo sinal...');
+            print('⏸️ Número 2 ficou PENDENTE, aguardando próximo sinal...');
             shouldSkipAdding = true;
             finalResultName = "";
             finalIndex = twoIndex;
           }
         } else if (predictedIndex == bomIndex) {
-          // Verifica se o sinal anterior foi bomIndex também
-          // Se sim, escreve "Obrigado" na primeira vez
+          // Obrigado só pode aparecer se:
+          // - Bom detectado uma vez (pendente)
+          // - E depois vier um frame SEM mãos (_processPendingSignal)
+          // Se vier qualquer outro sinal (ex: número 6, etc.), Obrigado NÃO é escrito sozinho.
           if (_pendingSignalIndex == bomIndex) {
-            finalResultName = "Sinal Obrigado";
-            finalIndex = bomIndex;
-            _predictionHistory.clear();
+            print('⏭️ "Bom/Obrigado" detectado duas vezes, não escrever nada.');
             _pendingSignalIndex = null;
             _pendingSignalName = null;
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = bomIndex;
           } else {
             _processPendingSignal();
-
             print(
-                '⏸️ "Obrigado/Bom" detectado, aguardando composição (dia/tarde/noite/tudo bem)...');
+                '⏸️ "Obrigado/Bom" detectado, aguardando frame sem mãos para confirmar "Obrigado"...');
             _pendingSignalIndex = bomIndex;
             _pendingSignalName = "Sinal Obrigado";
             shouldSkipAdding = true;
             finalResultName = "";
             finalIndex = bomIndex;
-          }
-        } else if (predictedIndex == conhecerIndex && handsDetected == 1) {
-          // Verifica se o último sinal reconhecido foi "Até"
-          if (_lastRecognizedIndex == ateIndex) {
-            // Se sim, adiciona "amanhã"
-            finalResultName = "Amanhã após Até";
-            finalIndex = -12;
-            _processPendingSignal();
-          } else {
-            print(
-                '⏸️ "Conhecer" (1 mão) detectado, aguardando composição (prazer)...');
-            shouldSkipAdding = true;
-            finalResultName = "";
-            finalIndex = conhecerIndex;
           }
         } else if (predictedIndex == voceIndex) {
           print(
@@ -833,47 +872,32 @@ class _CameraScreenState extends State<CameraScreen> {
           finalResultName = "";
           finalIndex = voceIndex;
         } else if (predictedIndex == ateIndex) {
-          // Até pode aparecer sozinho agora, mas só é possível com 2 mãos
           finalResultName = "Sinal Até";
           finalIndex = ateIndex;
           _processPendingSignal();
-        }
-        // Joia: não adiciona sozinho (só aparece em "Tudo bem")
-        else if (predictedIndex == joiaIndex) {
+        } else if (predictedIndex == joiaIndex) {
           _processPendingSignal();
-
-          print(
-              '⏭️ "Joia" detectado sozinho, ignorando (só aparece em "Tudo bem")');
+          print('⏭️ "Joia" detectado sozinho, ignorando (só aparece em "Tudo bem")');
           shouldSkipAdding = true;
           finalResultName = "";
           finalIndex = joiaIndex;
-        }
-        // Olá: permite aparecer sozinho, mas também compõe "Boa tarde"
-        else if (predictedIndex == olaIndex) {
+        } else if (predictedIndex == olaIndex) {
           _processPendingSignal();
           finalResultName = "Sinal Olá/Tchau";
           finalIndex = olaIndex;
-        }
-        // Onde: não adiciona sozinho (parte de "onde é o banheiro")
-        else if (predictedIndex == ondeIndex) {
-          print(
-              '⏸️ "Onde" detectado, aguardando composição (onde é o banheiro)...');
+        } else if (predictedIndex == ondeIndex) {
+          print('⏸️ "Onde" detectado, aguardando composição (onde é o banheiro)...');
           shouldSkipAdding = true;
           finalResultName = "";
           finalIndex = ondeIndex;
-        }
-        // Banheiro: não adiciona sozinho (parte de "onde é o banheiro")
-        else if (predictedIndex == banheiroIndex) {
-          print(
-              '⏸️ "Banheiro" detectado, aguardando composição (onde é o banheiro)...');
+        } else if (predictedIndex == banheiroIndex) {
+          print('⏸️ "Banheiro" detectado, aguardando composição (onde é o banheiro)...');
           shouldSkipAdding = true;
           finalResultName = "";
           finalIndex = banheiroIndex;
         } else if (predictedIndex == noiteIndex) {
           _processPendingSignal();
-
-          print(
-              '⏭️ "Noite" detectado sozinho, ignorando (só aparece em "Boa noite")');
+          print('⏭️ "Noite" detectado sozinho, ignorando (só aparece em "Boa noite")');
           shouldSkipAdding = true;
           finalResultName = "";
           finalIndex = noiteIndex;
@@ -910,32 +934,38 @@ class _CameraScreenState extends State<CameraScreen> {
           _kConsecutiveCount = 0;
           _processPendingSignal();
 
-          if (_lastCharIsLetter()) {
-            finalResultName = "Letra O (Contexto)";
-            finalIndex = 0;
-            print(
-                '🔤 Contexto: último char é letra, mostrando O');
-          } else {
+          if (_accumulatedText.trim().isEmpty || _lastCharIsDigit()) {
             finalResultName = "Número 0 (Contexto)";
             finalIndex = 0;
-            print(
-                '🔢 Contexto: último char não é letra, mostrando 0');
+            print('🔢 Contexto: caixa vazia ou último char é número, mostrando 0');
+          } else if (_lastCharIsLetter()) {
+            finalResultName = "Letra O (Contexto)";
+            finalIndex = 0;
+            print('🔤 Contexto: último char é letra, mostrando O');
+          } else {
+            print('⏭️ Sinal 0/O sem contexto, ignorando');
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = 0;
           }
         } else if (predictedIndex == 8) {
           _zConsecutiveCount = 0;
           _kConsecutiveCount = 0;
           _processPendingSignal();
 
-          if (_lastCharIsLetter()) {
-            finalResultName = "Letra S (Contexto)";
-            finalIndex = 8;
-            print(
-                '🔤 Contexto: último char é letra, mostrando S');
-          } else {
+          if (_accumulatedText.trim().isEmpty || _lastCharIsDigit()) {
             finalResultName = "Número 8 (Contexto)";
             finalIndex = 8;
-            print(
-                '🔢 Contexto: último char não é letra, mostrando 8');
+            print('🔢 Contexto: caixa vazia ou último char é número, mostrando 8');
+          } else if (_lastCharIsLetter()) {
+            finalResultName = "Letra S (Contexto)";
+            finalIndex = 8;
+            print('🔤 Contexto: último char é letra, mostrando S');
+          } else {
+            print('⏭️ Sinal 8/S sem contexto, ignorando');
+            shouldSkipAdding = true;
+            finalResultName = "";
+            finalIndex = 8;
           }
         } else {
           _zConsecutiveCount = 0;
@@ -957,24 +987,16 @@ class _CameraScreenState extends State<CameraScreen> {
 
           print(
               '📝 Sinal reconhecido: "$finalResultName" → Texto extraído: "$extractedText"');
-          print(
-              '📋 Último sinal adicionado: "$_lastAddedSignal"');
+          print('📋 Último sinal adicionado: "$_lastAddedSignal"');
 
-          bool canAdd = extractedText != _lastAddedSignal;
-
-          // Exceção: Se for Conhecer/Por favor, sempre permite adicionar
-          if ((finalIndex == conhecerIndex || finalIndex == porfavorIndex) &&
-              (_lastRecognizedIndex == conhecerIndex ||
-                  _lastRecognizedIndex == porfavorIndex)) {
-            canAdd = true;
-          }
+          bool canAdd = extractedText.isNotEmpty &&
+              extractedText != _lastAddedSignal;
 
           if (canAdd) {
             _accumulatedText += extractedText;
             _lastAddedSignal = extractedText;
 
-            print(
-                '✅ ADICIONADO! Texto acumulado agora: "$_accumulatedText"');
+            print('✅ ADICIONADO! Texto acumulado agora: "$_accumulatedText"');
 
             if (mounted) {
               setState(() {
@@ -984,7 +1006,7 @@ class _CameraScreenState extends State<CameraScreen> {
               _scrollToEnd();
             }
           } else {
-            print('⏭️ Mesmo sinal repetido, não adicionado');
+            print('⏭️ Mesmo texto repetido ou vazio, não adicionado');
           }
         }
       } else {
@@ -994,6 +1016,7 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     } catch (e) {
       print('Erro TFLite: $e');
+      _processPendingSignal();
     }
   }
 
