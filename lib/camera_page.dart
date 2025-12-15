@@ -10,7 +10,6 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image/image.dart' as img;
 
-// Extensão para reshape
 extension on List<double> {
   List<List<double>> reshape(List<int> shape) {
     if (shape.length != 2 || shape[0] * shape[1] != length) {
@@ -52,7 +51,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   final ScrollController _scrollController = ScrollController();
 
-  // --- Variáveis de Zoom ---
   double _minAvailableZoom = 1.0;
   double _maxAvailableZoom = 1.0;
   double _currentZoomLevel = 1.0;
@@ -113,7 +111,6 @@ class _CameraScreenState extends State<CameraScreen> {
     51: "Letra Z",
   };
 
-  // --- LISTAS DE CONTROLE DE SINAIS ---
   final Set<int> oneHandedSignalIndices = {
     0,
     1,
@@ -192,7 +189,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
   final Set<int> numberIndices = {1, 2, 3, 4, 5, 6, 7, 9};
 
-  // Saudações e expressões comuns
   final Set<int> saudacoesEExpressoesIndices = {
     10, // Te Amo
     33, // Oi
@@ -292,7 +288,6 @@ class _CameraScreenState extends State<CameraScreen> {
       _controller.lockCaptureOrientation(DeviceOrientation.landscapeRight);
       _controller.setFlashMode(FlashMode.off);
 
-      // --- Configuração do Zoom ---
       _maxAvailableZoom = await _controller.getMaxZoomLevel();
       _minAvailableZoom = await _controller.getMinZoomLevel();
 
@@ -400,7 +395,6 @@ class _CameraScreenState extends State<CameraScreen> {
             _processPendingSignal();
           }
         } else {
-          // resposta != 200 também é tratado como "sem sinal" para a lógica de Obrigado
           print('⚠️ Resposta HTTP != 200');
           _processPendingSignal();
         }
@@ -473,7 +467,6 @@ class _CameraScreenState extends State<CameraScreen> {
     return count;
   }
 
-  // Helper para ajustar maiúscula/minúscula da primeira letra de saudações/expressões
   String _applySentenceCase(String text) {
     if (text.isEmpty) return text;
     bool isFirstInText = _accumulatedText.trim().isEmpty;
@@ -489,11 +482,9 @@ class _CameraScreenState extends State<CameraScreen> {
   String _extractSignText(String signalName, int signalIndex) {
     String baseText = "";
 
-    // Número 9 com espaço
     if (signalIndex == 9) {
       baseText = "9 ";
     }
-    // CASOS ESPECIAIS 0/O E 8/S
     else if (signalIndex == 0) {
       if (_accumulatedText.trim().isEmpty || _lastCharIsDigit()) {
         baseText = "0";
@@ -519,15 +510,12 @@ class _CameraScreenState extends State<CameraScreen> {
         baseText = "";
       }
     }
-    // Números (1-7)
     else if (signalIndex >= 1 && signalIndex <= 7) {
       baseText = signalIndex.toString();
     }
-    // Te Amo - aplica sentence case
     else if (signalIndex == 10) {
       baseText = _applySentenceCase("te amo");
     }
-    // Letras (A-Z)
     else if (signalName.contains("Letra ")) {
       baseText = signalName
           .replaceAll("Letra ", "")
@@ -535,7 +523,6 @@ class _CameraScreenState extends State<CameraScreen> {
           .replaceAll(" (Dinâmico)", "")
           .trim();
     }
-    // Frases compostas
     else if (signalName == "Tudo bem") {
       baseText = _applySentenceCase("tudo bem");
     } else if (signalName == "Bom dia") {
@@ -549,7 +536,6 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Amanhã após Até") {
       baseText = "amanhã";
     }
-    // Perguntas
     else if (signalName == "Qual é o seu nome") {
       baseText = _applySentenceCase("qual é o seu nome?") + " ";
     } else if (signalName == "Que horas são") {
@@ -559,23 +545,18 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Onde é o banheiro") {
       baseText = _applySentenceCase("onde é o banheiro?") + " ";
     }
-    // "O meu nome é "
     else if (signalName == "O meu nome é ") {
       baseText = _applySentenceCase("o meu nome é ");
     }
-    // Sinal Obrigado
     else if (signalName == "Sinal Obrigado") {
       baseText = _applySentenceCase("obrigado");
     }
-    // Sinal Licença → "Com licença"
     else if (signalName == "Sinal Licença") {
       baseText = _applySentenceCase("com licença");
     }
-    // Sinal Abraço
     else if (signalName == "Sinal Abraço") {
       baseText = _applySentenceCase("abraço");
     }
-    // Pontuações
     else if (signalName == "Ponto Final") {
       baseText = ".";
     } else if (signalName == "Sinal Vírgula") {
@@ -583,7 +564,6 @@ class _CameraScreenState extends State<CameraScreen> {
     } else if (signalName == "Ponto de Exclamação") {
       baseText = "!";
     }
-    // Outros sinais simples
     else if (signalName.contains("Sinal ")) {
       String cleanName = signalName.replaceAll("Sinal ", "").split("/")[0].trim();
       baseText = _applySentenceCase(cleanName.toLowerCase());
@@ -604,7 +584,6 @@ class _CameraScreenState extends State<CameraScreen> {
       interpreter!.run(input, output);
       var probabilities = output[0];
 
-      // DESABILITA "Que horas são" (44) e Conhecer (40)
       probabilities[44] = 0.0;
       probabilities[40] = 0.0;
 
@@ -632,7 +611,7 @@ class _CameraScreenState extends State<CameraScreen> {
       print(
           '🎯 Predição: Índice $predictedIndex | Confiança: ${(confidence * 100).toStringAsFixed(1)}%');
 
-      final int conhecerIndex = 40; // agora desativado, só para manter compatibilidade
+      final int conhecerIndex = 40;
       final int porfavorIndex = 43;
 
       if (confidence > 0.80) {
@@ -690,11 +669,9 @@ class _CameraScreenState extends State<CameraScreen> {
           if (lastSignal == iIndex && currentSignal == jIndex) {
             isDynamicJ = true;
           }
-          // Tudo bem = Bom + Joia (lógica antiga)
           if (lastSignal == bomIndex && currentSignal == joiaIndex) {
             isTudoBem = true;
           }
-          // Tudo bem = Obrigado + Número 6 (nova lógica)
           if (lastSignal == bomIndex && currentSignal == numeroSeisIndex) {
             isTudoBem = true;
           }
@@ -844,10 +821,6 @@ class _CameraScreenState extends State<CameraScreen> {
             finalIndex = twoIndex;
           }
         } else if (predictedIndex == bomIndex) {
-          // Obrigado só pode aparecer se:
-          // - Bom detectado uma vez (pendente)
-          // - E depois vier um frame SEM mãos (_processPendingSignal)
-          // Se vier qualquer outro sinal (ex: número 6, etc.), Obrigado NÃO é escrito sozinho.
           if (_pendingSignalIndex == bomIndex) {
             print('⏭️ "Bom/Obrigado" detectado duas vezes, não escrever nada.');
             _pendingSignalIndex = null;
@@ -1037,7 +1010,6 @@ class _CameraScreenState extends State<CameraScreen> {
                 Positioned.fill(
                   child: CameraPreview(_controller),
                 ),
-                // --- SLIDER DE ZOOM ---
                 Positioned(
                   right: 10,
                   top: 50,
@@ -1059,7 +1031,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
                 ),
-                // --- BOTÃO PARA LIMPAR TEXTO ---
                 Positioned(
                   left: 60,
                   bottom: containerHeight + 25,
@@ -1082,7 +1053,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     child: const Icon(Icons.clear, color: Colors.white),
                   ),
                 ),
-                // --- TEXTO DE RESULTADO ---
                 Positioned(
                   bottom: 0,
                   left: 30,
