@@ -14,6 +14,10 @@ Além do **MediaPipe** e **TensorFlow**, também foi utilizada a biblioteca **Nu
 
 Como foi utilizado o framework **Flutter** para o desenvolvimento do aplicativo, foi necessário realizar a conversão dos modelos treinados em **TensorFlow** para **TensorFlow Lite**, garantindo compatibilidade e desempenho adequado em dispositivos móveis.
 
+## Explicação do funcionamento do aplicativo
+
+O LibrasCam funciona em etapas. Primeiro, o usuário aponta a câmera do celular para uma pessoa que está se comunicando em Libras. Em intervalos regulares, o aplicativo captura imagens e as envia a um servidor, onde um código em Python identifica as mãos e retorna suas coordenadas. Com esses dados em mãos, o app os processa com o modelo TensorFlow Lite, que determina qual dos sinais conhecidos mais se aproxima do gesto captado. Por fim, o sinal reconhecido é exibido na tela em formato de texto.
+
 ## Tela inicial do aplicativo LibrasCam
 
 <img width="369" height="800" alt="image" src="https://github.com/user-attachments/assets/edb4fb96-ca61-436c-8e00-2a70cfa30594" />
